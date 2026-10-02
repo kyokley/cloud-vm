@@ -41,6 +41,7 @@ class VmTests(unittest.TestCase):
         result = self.run_script("--help")
         self.assertEqual(result.returncode, 0)
         self.assertIn("inspect NAME", result.stdout)
+        self.assertIn("bootstrap NAME --yes --allow-sudo", result.stdout)
         self.assertNotEqual(self.run_script("inspect", "Bad_Name").returncode, 0)
 
     def test_exact_gateway_and_guest_inspect_payload(self):
@@ -64,12 +65,23 @@ printf '%s\\n' "$*" >> "$TRACE"
 cat >/dev/null
 ''')
         path = "/tmp/reviewed file; safe"
-        result = self.run_script("bootstrap", "node", "--no-daemon", "--yes", "--installer-file", path)
+        result = self.run_script("bootstrap", "node", "--yes", "--allow-sudo", "--installer-file", path)
         self.assertEqual(result.returncode, 0, result.stderr)
         line = self.trace.read_text()
         self.assertIn("--installer-file", line)
         self.assertIn("reviewed\\ file\\;\\ safe", line)
         self.assertIn("vm+node@vm.exe.xyz", line)
+
+    def test_bootstrap_rejects_legacy_modes_and_requires_explicit_authority(self):
+        for args, message in ((("--daemon", "--yes", "--allow-sudo"), "legacy"),
+                              (("--no-daemon", "--yes", "--allow-sudo"), "legacy"),
+                              (("--yes",), "requires explicit --allow-sudo"),
+                              (("--allow-sudo",), "requires explicit --yes")):
+            self.trace.unlink(missing_ok=True)
+            result = self.run_script("bootstrap", "node", *args)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(message, result.stderr)
+            self.assertFalse(self.trace.exists())
 
     def test_apply_requires_inputs_and_local_prerequisites(self):
         result = self.run_script("apply", "node")

@@ -11,7 +11,7 @@ The official exe.dev documentation describes VMs created from container images w
 1. Authenticate with exe.dev and create a VM using its documented CLI, for example `ssh exe.dev new --name=my-vm`.
 2. Inspect the VM account, architecture, operating system, privilege availability, and init system.
 3. Edit the project configuration to match that VM account and architecture.
-4. Bootstrap Nix only after explicitly selecting an installation mode and acknowledging installer execution.
+4. Bootstrap the supported Determinate Nix distribution only after authorizing installer execution and required privilege.
 5. Transfer the project and activate its Home Manager configuration through the exe.dev SSH gateway.
 6. Edit declarative configuration and repeat activation. Do not automatically recreate VMs or rerun installation.
 
@@ -25,21 +25,21 @@ The official exe.dev documentation describes VMs created from container images w
 
 ## Helper boundaries
 
-- `scripts/bootstrap-nix.sh` executes on the VM. It detects an existing usable Nix installation, validates prerequisites, and installs only through an explicit mode and execution acknowledgement. It never silently escalates or falls back between daemon and single-user mode.
+- `scripts/bootstrap-nix.sh` executes on the VM. It supports the Determinate Nix distribution with systemd on Linux x86_64 and aarch64. `--yes` acknowledges installer execution; non-root execution also requires `--allow-sudo` and noninteractive sudo. A standalone administrator may run the helper as root without sudo. The Home Manager account remains non-root. The removed upstream `--daemon`/`--no-daemon` and single-user interfaces are not supported.
 - A separate SSH helper inspects, bootstraps, or applies configuration to a named existing VM using `vm+NAME@vm.exe.xyz`, the documented fallback routing form. It validates VM names and keeps remote shell commands fixed or safely quoted.
 - Remote deployment uses a fixed user-owned project directory, excludes Git metadata and deepwork state, and activates a `path:` flake so the copied tree does not depend on Git tracking.
 - No secrets belong in Nix expressions or installation arguments. Nix store contents are not secret storage.
-- Downloaded installer execution requires explicit consent. HTTPS protects transport, but the upstream installer is a mutable supply-chain input. Support a locally reviewed installer file where practical; do not describe remote bootstrap as fully reproducible.
+- The installer entry point is the mutable HTTPS URL `https://install.determinate.systems/nix`. Download the complete entry script before execution. It may download a separate platform installer binary. `--installer-file` accepts a reviewed entry script already on the guest, but does not prevent secondary downloads. Installer execution and its root-level system changes require explicit operator authorization. The helper opts out of anonymous installer diagnostics with `--diagnostic-endpoint=`; this does not disable all telemetry or network access. `flake.lock` does not pin bootstrap artifacts, so bootstrap is not fully reproducible.
 
 ## Installer prerequisites
 
-Official Nix documentation recommends multi-user installation where supported. Linux daemon mode requires systemd and known-disabled SELinux, and changes system users/services. Require `getenforce` to report exactly `Disabled`; missing tooling, missing interfaces, failed reads, and unknown status are not proof that SELinux is disabled. Do not install prerequisite tools automatically. Single-user mode still requires writable `/nix`, which usually needs an administrator to create. It is not an escape hatch for missing privilege. Detect root, partial installations, and unsupported prerequisites explicitly and provide actionable failures.
+Determinate Nix installation requires Linux x86_64 or aarch64 with usable systemd. Determinate supports SELinux; bootstrap does not require `getenforce` or disabled SELinux. Installing as a non-root VM user requires explicit sudo authorization and noninteractive `sudo -n`. A local administrator can run the helper as root without sudo, but the Home Manager target remains the non-root gateway account. There is no single-user or no-init fallback. Any existing `/nix` directory or Nix installation state, including a command, receipt, installer, or profile, stops bootstrap for explicit manual review. Never force installation, uninstall, rename receipts, or automatically migrate existing state. Follow the [Determinate migration guide](https://docs.determinate.systems/guides/migrating-from-upstream-nix/) for migration planning; this template does not automate migration.
 
 No live VM has been inspected or changed during project development. Runtime checks are required before installation; the project cannot promise that every custom exe.dev image is compatible.
 
-## Gate 1 acceptance contracts
+## Current acceptance contracts
 
-These contracts close the initial design review without changing its architecture or trust boundary.
+These contracts define the current configuration and deployment boundaries. The Phase 3 Determinate bootstrap contract supersedes the original installer-specific requirements.
 
 ### Identity and SSH
 
@@ -47,9 +47,11 @@ The gateway selects a VM, not an arbitrary account. Initial scope supports only 
 
 ### Bootstrap
 
-The caller must select `--daemon` or `--no-daemon`; available privilege never selects a mode. Both downloaded and reviewed-file installers require explicit execution consent. Consent runs the upstream installer noninteractively. Sudo use requires separate explicit authorization; no script prompts or silently escalates. Daemon mode requires usable systemd and `getenforce` reporting exactly `Disabled`; missing tooling or interfaces and unknown/unreadable status fail. Single-user installation rejects root and requires an existing usable writable `/nix`; administrator preparation is a separate documented action. A usable existing Nix installation bypasses installation. Partial installations fail rather than being repaired, removed, or reinstalled. A successful installer exit is not success until the selected Nix store passes `nix store ping`.
+Current Phase 3 bootstrap contract supersedes the original upstream daemon/single-user contract. The supported default is Determinate Nix; selecting upstream Nix is unsupported. Install with systemd on Linux x86_64 or aarch64. The interface is `vm.sh bootstrap NAME --yes --allow-sudo [--installer-file GUEST_PATH]`; the guest-local interface is `bootstrap-nix.sh --yes [--allow-sudo] [--installer-file PATH]`. Non-root execution requires `--allow-sudo` and usable noninteractive `sudo -n`; direct standalone administrator/root execution does not require sudo. Home Manager still targets the non-root VM user. `--yes` explicitly authorizes execution.
 
-The bootstrap helper must support `--installer-file PATH`. That file resides on the guest when invoked through SSH; the operator transfers a reviewed file separately. Reviewed-file mode makes no upstream installer request. Downloaded mode uses only the fixed official HTTPS URL, completes the download before execution, and fails on transport or file validation errors. Consent accepts arbitrary installer execution; `flake.lock` does not pin the bootstrap installer.
+The fixed mutable entry URL is `https://install.determinate.systems/nix`. The download path completes the entry script before execution; the wrapper may download a separate platform binary. Reviewed-file mode uses an entry script already on the guest and skips only the entry-script request. Both paths invoke `sh FILE install --no-confirm --diagnostic-endpoint=` with stdin closed. Installer diagnostics are disabled; this does not disable all telemetry or network downloads. `flake.lock` does not pin bootstrap artifacts.
+
+Require usable systemd. Determinate supports SELinux; do not require `getenforce` or disabled SELinux. Remove `--daemon`, `--no-daemon`, and all single-user/no-init fallback documentation. Any existing `/nix` or Nix installation state (including command, receipt, installer, or profile) stops for explicit manual review. Never force installation, uninstall, rename receipts, or automatically migrate. Use the official migration guide; no migration procedure runs automatically. A successful installer exit is not success until Nix and the daemon store pass the documented post-install checks.
 
 ### Deployment and locked activation
 
@@ -59,7 +61,7 @@ Deployment requires a present, current lock and all local inputs. It uses an exp
 
 ### Required focused evidence
 
-Mocks must cover rejected placeholders, account/home/architecture mismatches, root target, invalid VM names, exact destination, and absence of writes on identity rejection. Bootstrap tests cover both modes, consent, authorized/unavailable privilege, unavailable systemd, SELinux enabled/unknown including absent tooling/interfaces, unwritable store, partial installation, usable existing Nix, successful and failed installer paths, and invalid reviewed files. Deployment tests cover unsafe ownership, symlinks, and writable modes; restrictive creation/extraction modes; exact allowlisted transfer; transfer failure; missing/stale lock or local inputs; unchanged lock; build failure; activation failure; and no implicit bootstrap. Real VM compatibility remains an explicitly untested boundary.
+Mocks must cover rejected placeholders, account/home/architecture mismatches, root target, invalid VM names, exact destination, and absence of writes on identity rejection. Bootstrap tests cover accepted and removed flags, consent, authorized/unavailable sudo and standalone root invocation, unavailable systemd, SELinux independence, existing Nix state, successful and failed installer paths, exact `install --no-confirm --diagnostic-endpoint=` arguments, closed stdin, and invalid reviewed files. Deployment tests cover unsafe ownership, symlinks, and writable modes; restrictive creation/extraction modes; exact allowlisted transfer; transfer failure; missing/stale lock or local inputs; unchanged lock; build failure; activation failure; and no implicit bootstrap. Real VM compatibility remains an explicitly untested boundary.
 
 ## Verification plan
 
@@ -75,8 +77,9 @@ Local mock tests establish command construction and failure behavior, not guest 
 - [How exe.dev works](https://hub.exe.dev/docs/faq/how-exedev-works): container image on a block device, kernel constraints, no public VM IP, and proxy routing.
 - [exe.dev persistent disks](https://hub.exe.dev/docs/serverful): persistent guest filesystems; Nix-specific restart behavior remains unverified.
 - [exe.dev Docker FAQ](https://hub.exe.dev/docs/faq/docker): Docker works on exeuntu; this does not establish arbitrary init or privilege support.
-- [Nix binary installation](https://nix.dev/manual/nix/2.34/installation/installing-binary.html): official installer at `https://nixos.org/nix/install`; explicit `--daemon` and `--no-daemon` modes.
-- [Nix multi-user installation](https://nix.dev/manual/nix/2.34/installation/multi-user.html): privileged daemon, build users, system service, and trusted-user security boundary.
-- [Nix single-user installation](https://nix.dev/manual/nix/2.34/installation/single-user.html): writable `/nix` requirement.
+- [Determinate Nix documentation](https://docs.determinate.systems/determinate-nix/): supported Determinate distribution and installation behavior.
+- [Determinate nix-installer](https://github.com/DeterminateSystems/nix-installer): installer implementation and command interface.
+- [Determinate installer entry point](https://install.determinate.systems/nix): mutable shell wrapper that downloads the platform installer.
+- [Migrating from upstream Nix](https://docs.determinate.systems/guides/migrating-from-upstream-nix/): manual migration guidance; this template does not automate migration.
 - [Nix flakes](https://nix.dev/manual/nix/stable/concepts/flakes.html): `nix-command flakes` experimental features.
 - [Home Manager standalone flakes](https://nix-community.github.io/home-manager/usage/upgrading.html): compatible Home Manager/nixpkgs releases and standalone activation.

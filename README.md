@@ -18,7 +18,7 @@ Local tools: Nix with flakes enabled, Bash, Python 3, `tar`, and `ssh`. The deve
 
 The guest must be an existing Linux VM with a non-root user selected by the exe.dev SSH gateway. Supported architectures are `x86_64-linux` and `aarch64-linux`. The gateway identity, username, home directory, and architecture must match `config/target.nix`; `apply` stops on mismatch and never creates or switches accounts. Root targets are not supported.
 
-Nix installation requirements depend on the selected mode. Daemon mode requires usable systemd, `getenforce` reporting `Disabled`, and explicitly authorized usable sudo. Provide `getenforce` separately before bootstrap. The helper fails if `getenforce` is unavailable or cannot report status; it does not infer disabled SELinux from missing interfaces or install prerequisite tools. Single-user mode requires an administrator to prepare an existing empty, writable `/nix` directory. Neither mode is automatic. Some VM images may not meet these requirements. Inspect the guest before installing.
+Bootstrap supports Linux `x86_64` and `aarch64` guests with usable systemd. The selected Determinate Nix distribution supports SELinux; bootstrap does not require `getenforce`. A non-root SSH user needs explicitly authorized, noninteractive sudo. An administrator can also run the guest-local helper as root without sudo; the Home Manager target account must still be non-root. Some VM images may not meet these requirements. Inspect the guest before installing.
 
 ## Create, authenticate, and inspect
 
@@ -34,34 +34,32 @@ See [exe.dev VM creation](https://hub.exe.dev/docs/cli-new) and [SSH destination
 scripts/vm.sh inspect my-vm
 ```
 
-The helper connects to `vm+my-vm@vm.exe.xyz`. SSH host-key checking stays enabled; verify the host key as usual. Do not proceed if the inspected account is root or the VM does not meet the selected install mode's requirements.
+The helper connects to `vm+my-vm@vm.exe.xyz`. SSH host-key checking stays enabled; verify the host key as usual. Do not proceed if the inspected account is root, the VM lacks usable systemd, or its Linux architecture is unsupported.
 
 ## Bootstrap Nix
 
 First edit `config/target.nix` to match the inspected guest exactly. Set `system` to `"x86_64-linux"` or `"aarch64-linux"`; replace the example username and home directory. Review all commands before running them.
 
-Preferred mode, only when the guest has usable systemd and `getenforce` reports `Disabled`:
+The supported default is Determinate Nix with systemd. Selecting upstream Nix is unsupported:
 
 ```sh
-scripts/vm.sh bootstrap my-vm --daemon --yes --allow-sudo
+scripts/vm.sh bootstrap my-vm --yes --allow-sudo
 ```
 
-**Warning:** `--yes` authorizes execution of the Nix installer and runs it noninteractively. `--allow-sudo` separately authorizes privileged operations that can change system users and services. Run only after reviewing the installer and confirming the guest prerequisites. The helper does not authorize interactive privilege prompts or switch install modes. It uses the official installer over HTTPS by default. `flake.lock` does not pin that installer.
+**Warning:** `--yes` authorizes execution of a mutable installer downloaded from `https://install.determinate.systems/nix`. `--allow-sudo` separately authorizes privileged installation. The installer runs as root and can add system users and services. Review the installer source and authorize these system changes before proceeding. The helper uses `sudo -n`; it does not request a password interactively. The downloaded entry script is fully fetched before execution, but it may download a platform-specific installer binary. `flake.lock` does not pin either installer artifact.
 
-For single-user mode, an administrator must first prepare an existing empty, writable `/nix` directory on the guest. This mode does not use sudo and is not a workaround for missing administrator access:
+The old `--daemon` and `--no-daemon` options are removed. There is no single-user or no-init fallback. Do not run bootstrap on a guest with existing Nix state. An existing `/nix` directory, Nix command, receipt, installer, or profile requires explicit manual review and migration first. Bootstrap never forces installation, uninstalls Nix, renames a receipt, or migrates existing state. See the [Determinate migration guide](https://docs.determinate.systems/guides/migrating-from-upstream-nix/) before planning a migration; this project does not automate it.
+
+To opt out of the installer's anonymous diagnostics, bootstrap passes `--diagnostic-endpoint=`. This does not disable all telemetry or network downloads.
+
+For a separately reviewed entry script, obtain it from the official [Determinate installer](https://install.determinate.systems/nix), inspect it, then transfer it to the guest. The path passed to `--installer-file` is a guest path. The file is run as a shell wrapper and may still download the secondary installer binary:
 
 ```sh
-scripts/vm.sh bootstrap my-vm --no-daemon --yes
+scp ./determinate-nix-installer "vm+my-vm@vm.exe.xyz:/tmp/determinate-nix-installer"
+scripts/vm.sh bootstrap my-vm --yes --allow-sudo --installer-file /tmp/determinate-nix-installer
 ```
 
-To use a separately reviewed installer, obtain it from the official [Nix installation source](https://nixos.org/nix/install), inspect it, then transfer it to the guest. The path passed to `--installer-file` is a guest path:
-
-```sh
-scp ./nix-install.sh "vm+my-vm@vm.exe.xyz:/tmp/nix-install.sh"
-scripts/vm.sh bootstrap my-vm --daemon --yes --allow-sudo --installer-file /tmp/nix-install.sh
-```
-
-Use `--no-daemon` instead only after preparing `/nix` as described above. Reviewed-file mode skips fetching the bootstrap entry script. The reviewed installer may still download tarballs or additional scripts. Installer execution is a separate supply-chain risk; a flake lock does not make bootstrap reproducible.
+On the guest, the equivalent local interface is `bootstrap-nix.sh --yes [--allow-sudo] [--installer-file PATH]`. Run it as the non-root VM user with `--allow-sudo` to authorize `sudo -n`, or run it directly as a root administrator without `--allow-sudo`. Do not use root as the Home Manager target account. Reviewed-file mode skips downloading the entry script only; the wrapper may download the secondary binary. Installer execution and downloads remain supply-chain risks, and a flake lock does not make bootstrap reproducible.
 
 ## Configure and apply
 
@@ -115,4 +113,4 @@ The flake check evaluates outputs supported by the current host. Linux activatio
 
 ## Manual VM smoke test
 
-After authentication and explicit authorization, create or select a disposable existing VM, inspect it, configure the target, and bootstrap Nix using a mode whose prerequisites are met. Run `apply`, confirm it succeeds, then run `apply` again to check repeatability. Verify the installed packages and user settings on the guest, reconnect after a VM restart, and confirm the expected state persists. This project has not performed this real-VM test; do not treat local mocks or evaluation as guest validation.
+After authentication and explicit authorization, create or select a disposable existing VM, inspect it, configure the target, and bootstrap Determinate Nix after confirming prerequisites. Run `apply`, confirm it succeeds, then run `apply` again to check repeatability. Verify the installed packages and user settings on the guest, reconnect after a VM restart, and confirm the expected state persists. This project has not performed this real-VM test; do not treat local mocks or evaluation as guest validation.

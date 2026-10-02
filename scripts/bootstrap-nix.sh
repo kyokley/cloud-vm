@@ -3,114 +3,120 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: bootstrap-nix.sh (--daemon | --no-daemon) --yes [--allow-sudo] [--installer-file PATH]
+Usage: bootstrap-nix.sh --yes [--allow-sudo] [--installer-file PATH]
 
-Run on the target Linux VM as its non-root account. --yes authorizes execution
-of the Nix installer and runs it noninteractively. --allow-sudo separately authorizes sudo use. Without
---installer-file, download the official installer over HTTPS. A reviewed file
-must already be on the guest. Single-user installation requires an administrator
-to prepare an existing writable /nix directory before running this script; this
-script never creates it or escalates automatically.
+Install supported default Determinate Nix on Linux with systemd. --yes is
+required consent to run the privileged installer noninteractively. A non-root
+user must separately authorize sudo with --allow-sudo. Root may run this helper
+directly. A reviewed installer file must already be on this guest; without it,
+the helper downloads the official HTTPS entry script. The entry script may fetch
+a separate platform installer. Existing Nix state is never migrated or changed.
 EOF
 }
 fail() { printf 'bootstrap-nix: %s\n' "$*" >&2; exit 1; }
-mode='' consent=0 allow_sudo=0 installer_file=''
+
+consent=0
+allow_sudo=0
+installer_file=''
 while (($#)); do
   case "$1" in
-    --daemon|--no-daemon) [[ -z "$mode" ]] || fail 'select exactly one installation mode'; mode=$1 ;;
     --yes) consent=1 ;;
     --allow-sudo) allow_sudo=1 ;;
-    --installer-file) (($# >= 2)) || fail '--installer-file needs a path'; installer_file=$2; shift ;;
+    --installer-file)
+      (($# >= 2)) || fail '--installer-file needs a guest path'
+      installer_file=$2
+      shift
+      ;;
+    --daemon|--no-daemon)
+      fail 'legacy --daemon/--no-daemon modes were removed; Determinate Nix installs its systemd service'
+      ;;
     --help|-h) usage; exit 0 ;;
     *) fail "unknown option: $1" ;;
   esac
   shift
 done
-[[ -n "$mode" ]] || fail 'select --daemon or --no-daemon'
 ((consent)) || fail 'installer execution requires --yes'
-[[ $(uname -s) == Linux ]] || fail 'only Linux is supported'
-arch=$(uname -m)
-case "$arch" in x86_64|aarch64) ;; *) fail "unsupported Linux architecture: $arch" ;; esac
-[[ $(id -u) -ne 0 ]] || fail 'run as the non-root VM account'
 
-nix_candidates() {
-  local nix_user
-  nix_user=$(id -un)
-  printf '%s\n' \
-    "$HOME/.nix-profile/bin/nix" \
-    "$HOME/.local/state/nix/profile/bin/nix" \
-    "/nix/var/nix/profiles/per-user/$nix_user/profile/bin/nix" \
-    /nix/var/nix/profiles/default/bin/nix \
-    /nix/var/nix/profiles/per-user/root/profile/bin/nix \
-    "$(command -v nix || true)"
-}
-usable_nix() {
-  local candidate
-  while IFS= read -r candidate; do
-    [[ -n "$candidate" && -x "$candidate" ]] || continue
-    if "$candidate" --version >/dev/null 2>&1 && \
-      "$candidate" --experimental-features nix-command store ping --store "$nix_store" >/dev/null 2>&1; then
-      printf '%s\n' "$candidate"
-      return 0
-    fi
-  done < <(nix_candidates)
-  return 1
-}
-nix_store=local
-[[ $mode != --daemon ]] || nix_store=daemon
-if nix_path=$(usable_nix); then
-  printf 'Nix already usable: %s\n' "$nix_path"
-  exit 0
+[[ $(uname -s) == Linux ]] || fail 'only Linux is supported'
+case "$(uname -m)" in
+  x86_64|aarch64) ;;
+  *) fail "unsupported Linux architecture: $(uname -m)" ;;
+esac
+systemd_dir=/run/systemd/system
+[[ -d "$systemd_dir" ]] || fail 'Determinate Nix requires usable systemd at /run/systemd/system'
+command -v systemctl >/dev/null 2>&1 || fail 'Determinate Nix requires systemctl'
+system_state=$(systemctl is-system-running 2>/dev/null || true)
+[[ $system_state == running || $system_state == degraded ]] || fail "systemd is not usable (status: ${system_state:-unknown})"
+
+nix_root=/nix
+uid=$(id -u)
+if [[ $uid != 0 ]]; then
+  ((allow_sudo)) || fail 'non-root installation requires explicit --allow-sudo authorization'
+  command -v sudo >/dev/null 2>&1 || fail 'non-root installation requires usable sudo'
+  sudo -n true >/dev/null 2>&1 || fail 'sudo is unavailable without a password; configure privilege separately'
+elif ((allow_sudo)); then
+  printf 'Running as root; --allow-sudo is not needed.\n' >&2
 fi
-if [[ -d /nix/store ]] || [[ -d /nix/var/nix/profiles ]] || command -v nix >/dev/null 2>&1; then
-  fail 'partial Nix installation detected; inspect and repair manually'
+
+if [[ -e "$nix_root" || -L "$nix_root" ]]; then
+  fail 'existing /nix state detected; inspect and perform any required migration manually'
 fi
+for candidate in \
+  "$nix_root/receipt.json" \
+  "$nix_root/nix-installer" \
+  "$HOME/.nix-profile/bin/nix" \
+  "$HOME/.local/state/nix/profile/bin/nix" \
+  "$HOME/.local/state/nix/profiles/profile/bin/nix"; do
+  if [[ -e "$candidate" || -L "$candidate" ]]; then
+    fail "existing Nix installation marker detected at $candidate; inspect and migrate manually"
+  fi
+done
+if command -v nix >/dev/null 2>&1; then
+  fail "Nix command already exists at $(command -v nix); inspect and migrate manually"
+fi
+
 if [[ -n "$installer_file" ]]; then
   [[ -f "$installer_file" && -r "$installer_file" && -s "$installer_file" ]] || fail 'reviewed installer must be a readable, non-empty regular file'
-fi
-
-if [[ $mode == --daemon ]]; then
-  ((allow_sudo)) || fail 'daemon mode requires explicit --allow-sudo authorization'
-  command -v sudo >/dev/null 2>&1 || fail 'daemon mode requires usable sudo'
-  sudo -n true >/dev/null 2>&1 || fail 'sudo is unavailable without a password; configure privilege separately'
-  sudo_path=$(command -v sudo)
-  case "$sudo_path" in /*) ;; *) sudo_path="$PWD/$sudo_path" ;; esac
-  [[ -d /run/systemd/system ]] || fail 'daemon mode requires usable systemd at /run/systemd/system'
-  command -v systemctl >/dev/null 2>&1 || fail 'daemon mode requires systemctl'
-  system_state=$(systemctl is-system-running 2>/dev/null || true)
-  [[ $system_state == running || $system_state == degraded ]] || fail "daemon mode requires running systemd (status: ${system_state:-unknown})"
-  if command -v getenforce >/dev/null 2>&1; then
-    selinux=$(getenforce 2>/dev/null) || fail 'SELinux status is unknown; verify it is disabled'
-    [[ $selinux == Disabled ]] || fail "daemon mode requires disabled SELinux (status: $selinux)"
-  else
-    fail 'getenforce is required to confirm SELinux is disabled; absent or unreadable interfaces do not prove disabled status'
-  fi
-else
-  ((allow_sudo == 0)) || fail '--allow-sudo is not used for single-user mode'
-  [[ -d /nix && -w /nix ]] || fail 'single-user mode requires an administrator-prepared writable /nix'
-fi
-
-if [[ -n "$installer_file" ]]; then
   installer=$installer_file
 else
   command -v curl >/dev/null 2>&1 || fail 'curl is required to download the official installer'
-  temp=$(mktemp) || fail 'cannot create installer temporary file'
+  temp=$(mktemp) || fail 'cannot create temporary installer file'
   trap 'rm -f "$temp"' EXIT
-  curl --fail --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 'https://nixos.org/nix/install' --output "$temp" || fail 'official installer download failed'
+  curl --fail --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
+    'https://install.determinate.systems/nix' --output "$temp" || fail 'official installer download failed'
   [[ -s "$temp" ]] || fail 'official installer download was empty'
   installer=$temp
 fi
-if [[ $mode == --daemon ]]; then
-  sudo_wrapper=$(mktemp -d) || fail 'cannot create noninteractive sudo wrapper'
-  trap 'rm -rf "$sudo_wrapper"; [[ -z "${temp-}" ]] || rm -f "$temp"' EXIT
-  printf '#!/bin/sh\nexec %q -n "$@"\n' "$sudo_path" >"$sudo_wrapper/sudo"
-  chmod 700 "$sudo_wrapper/sudo"
-  PATH="$sudo_wrapper:$PATH" NIX_BECOME="$sudo_wrapper/sudo" NIX_INSTALLER_YES=1 bash "$installer" "$mode" </dev/null
+
+# Do not inherit the previous upstream installer's controls into this installer.
+unset NIX_BECOME NIX_INSTALLER_YES
+if [[ $uid == 0 ]]; then
+  sh "$installer" install --no-confirm --diagnostic-endpoint= </dev/null
 else
-  NIX_INSTALLER_YES=1 bash "$installer" "$mode" </dev/null
+  sudo -n -- sh "$installer" install --no-confirm --diagnostic-endpoint= </dev/null
 fi
+
+usable_nix() {
+  local candidate
+  for candidate in \
+    "$HOME/.nix-profile/bin/nix" \
+    "$HOME/.local/state/nix/profile/bin/nix" \
+    "$HOME/.local/state/nix/profiles/profile/bin/nix" \
+    "$nix_root/var/nix/profiles/per-user/$(id -un)/profile/bin/nix" \
+    "$nix_root/var/nix/profiles/default/bin/nix" \
+    "$nix_root/var/nix/profiles/per-user/root/profile/bin/nix" \
+    "$(command -v nix || true)"; do
+    [[ -n "$candidate" && -x "$candidate" ]] || continue
+    if "$candidate" --version >/dev/null 2>&1 && \
+      "$candidate" --experimental-features nix-command store ping --store daemon >/dev/null 2>&1; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
 if nix_path=$(usable_nix); then
-  printf 'Nix installation verified: %s\n' "$nix_path"
+  printf 'Determinate Nix installation verified: %s\n' "$nix_path"
 else
-  fail 'installer returned success but no usable Nix store was found'
+  fail 'installer returned success but Nix daemon store verification failed'
 fi

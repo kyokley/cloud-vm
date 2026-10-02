@@ -5,7 +5,7 @@ usage() {
   cat <<'EOF'
 Usage:
   vm.sh inspect NAME
-  vm.sh bootstrap NAME (--daemon | --no-daemon) --yes [--allow-sudo] [--installer-file GUEST_PATH]
+  vm.sh bootstrap NAME --yes --allow-sudo [--installer-file GUEST_PATH]
   vm.sh apply NAME
 
 NAME is a lowercase VM name. SSH target is vm+NAME@vm.exe.xyz; normal host-key
@@ -16,6 +16,26 @@ Apply needs local nix, tar, ssh, and Python 3. Deployment does not bootstrap Nix
 EOF
 }
 fail() { printf 'vm.sh: %s\n' "$*" >&2; exit 1; }
+validate_bootstrap_options() {
+  local consent=0 allow_sudo=0 installer_file=0
+  while (($#)); do
+    case "$1" in
+      --yes) ((consent == 0)) || fail 'duplicate --yes'; consent=1 ;;
+      --allow-sudo) ((allow_sudo == 0)) || fail 'duplicate --allow-sudo'; allow_sudo=1 ;;
+      --installer-file)
+        ((installer_file == 0 && $# >= 2)) || fail '--installer-file needs one guest path'
+        [[ -n "$2" ]] || fail '--installer-file path must not be empty'
+        installer_file=1
+        shift
+        ;;
+      --daemon|--no-daemon) fail 'legacy --daemon/--no-daemon modes were removed; use Determinate Nix systemd installation' ;;
+      *) fail "unknown bootstrap option: $1" ;;
+    esac
+    shift
+  done
+  ((consent)) || fail 'bootstrap requires explicit --yes consent'
+  ((allow_sudo)) || fail 'VM bootstrap requires explicit --allow-sudo authorization'
+}
 # Guest entry point. This exact source is sent over SSH; no remote shell input is evaluated.
 guest_main() {
   set -euo pipefail
@@ -106,6 +126,7 @@ case "$action" in
     send_guest __guest inspect
     ;;
   bootstrap)
+    validate_bootstrap_options "$@"
     send_guest __guest identity >/dev/null || fail 'cannot inspect guest identity'
     # Bootstrap options remain separate SSH argv values and are shell-quoted by printf %q.
     # Options are escaped for the remote shell by printf %q; installer file path stays guest-side.
