@@ -1,5 +1,9 @@
-{ pkgs, target, ... }:
 {
+  pkgs,
+  target,
+  config,
+  ...
+}: {
   home.username = target.username;
   home.homeDirectory = target.homeDirectory;
 
@@ -12,8 +16,28 @@
     jq
     ripgrep
     tmux
+    nix-search-cli
   ];
 
-  programs.home-manager.enable = true;
-  programs.bash.enable = true;
+  programs = {
+    home-manager.enable = true;
+    bash.enable = true;
+    nh = {
+      enable = true;
+      clean = {
+        enable = true;
+        dates = "weekly";
+      };
+      flake = "${config.home.homeDirectory}/dotfiles";
+    };
+  };
+
+  nix.settings = {
+    extra-substituters = [
+      "https://horus.cachix.org"
+    ];
+    extra-trusted-public-keys = [
+      "horus.cachix.org-1:YZ4tQYAoKH+zkKbD4aqFcMHgZxIM7Uo4dPEfwUrubT4="
+    ];
+  };
 }
