@@ -1,1 +1,4 @@
 .slim/deepwork/
+__pycache__/
+result
+result-*
