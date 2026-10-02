@@ -3,6 +3,7 @@ import pathlib
 import json
 import hashlib
 import shlex
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -11,6 +12,8 @@ import io
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "vm.sh"
+BASH = shutil.which("bash")
+PYTHON = shutil.which("python3")
 
 
 class VmTests(unittest.TestCase):
@@ -23,7 +26,7 @@ class VmTests(unittest.TestCase):
         self.home.mkdir()
         self.home.chmod(0o700)
         self.env = os.environ.copy()
-        self.env["PATH"] = f"{self.bin}:/usr/bin:/bin"
+        self.env["PATH"] = f"{self.bin}:{pathlib.Path(BASH).parent}:{pathlib.Path(PYTHON).parent}:/usr/bin:/bin"
         self.env["TRACE"] = str(self.trace)
 
     def tearDown(self):
@@ -31,7 +34,7 @@ class VmTests(unittest.TestCase):
 
     def mock(self, name, source):
         path = self.bin / name
-        path.write_text((source if source.startswith("#!") else "#!/bin/bash\n" + source) + "\n")
+        path.write_text((source if source.startswith("#!") else "#!/usr/bin/env bash\n" + source) + "\n")
         path.chmod(0o755)
 
     def run_script(self, *args):
@@ -42,16 +45,17 @@ class VmTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("inspect NAME", result.stdout)
         self.assertIn("bootstrap NAME --yes --allow-sudo", result.stdout)
+        self.assertIn("config/powerlevel10k_config.zsh", result.stdout)
         self.assertNotEqual(self.run_script("inspect", "Bad_Name").returncode, 0)
 
     def test_exact_gateway_and_guest_inspect_payload(self):
         # Execute the transmitted real vm.sh guest entry point in the SSH mock.
-        self.mock("ssh", '''#!/usr/bin/env python3
+        self.mock("ssh", f'''#!/usr/bin/env python3
 import os,subprocess,sys
 target,command=sys.argv[1:3]
 with open(os.environ["TRACE"],"a") as f: f.write(target+" "+command+"\\n")
 payload=sys.stdin.read()
-result=subprocess.run(["/bin/bash","-s","--","__guest","inspect"],input=payload,env={**os.environ,"HOME":"/home/alice","USER":"alice"},text=True,capture_output=True)
+result=subprocess.run([{BASH!r},"-s","--","__guest","inspect"],input=payload,env={{**os.environ,"HOME":"/home/alice","USER":"alice"}},text=True,capture_output=True)
 sys.stdout.write(result.stdout); sys.stderr.write(result.stderr); sys.exit(result.returncode)
 ''')
         result = self.run_script("inspect", "my-vm")
@@ -84,6 +88,11 @@ cat >/dev/null
             self.assertFalse(self.trace.exists())
 
     def test_apply_requires_inputs_and_local_prerequisites(self):
+        (self.bin / "bash").symlink_to(BASH)
+        for command in ("dirname", "basename"):
+            (self.bin / command).symlink_to(shutil.which(command))
+        self.env["PATH"] = str(self.bin)
+        self.mock("python3", "exit 0")
         result = self.run_script("apply", "node")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("nix is required", result.stderr)
@@ -113,6 +122,14 @@ cat >/dev/null
         result = subprocess.run([str(script), "apply", "node"], env=self.env, text=True, capture_output=True)
         self.assertIn("required local input missing or unsafe: flake.lock", result.stderr)
 
+        (repo / "flake.lock").write_text("{}\n")
+        result = subprocess.run([str(script), "apply", "node"], env=self.env, text=True, capture_output=True)
+        self.assertIn("required local input missing or unsafe: config/powerlevel10k_config.zsh", result.stderr)
+
+        (repo / "config/powerlevel10k_config.zsh").symlink_to(pathlib.Path(self.temp.name) / "outside-config")
+        result = subprocess.run([str(script), "apply", "node"], env=self.env, text=True, capture_output=True)
+        self.assertIn("required local input missing or unsafe: config/powerlevel10k_config.zsh", result.stderr)
+
     def test_apply_rejects_example_identity_before_ssh(self):
         self.mock("nix", 'printf \'{"system":"x86_64-linux","username":"example","homeDirectory":"/home/example"}\\n\'')
         for cmd in ("tar", "ssh", "python3"):
@@ -141,6 +158,12 @@ cat >/dev/null
         if nix_profile.exists() or nix_profile.is_symlink():
             nix_profile.unlink()
         nix_profile.symlink_to(self.bin / "nix")
+        zsh_path = self.home / ".nix-profile/bin/zsh"
+        zsh_path.parent.mkdir(parents=True, exist_ok=True)
+        zsh_path.write_text("#!/bin/sh\n")
+        zsh_path.chmod(0o755)
+        self.env["CURRENT_SHELL"] = "/bin/bash"
+        self.env["REGISTERED_SHELL"] = "no"
         target = {"system": "x86_64-linux", "username": "alice", "homeDirectory": str(self.home)}
         self.mock("nix", f'''#!/usr/bin/env python3
 import json,os,sys,pathlib
@@ -164,6 +187,13 @@ sys.exit(0)
         self.mock("id", '''[[ "$1" == -un ]] && { printf '%s\\n' "$GUEST_USER"; exit; }
 [[ "$1" == -u ]] && { printf '%s\\n' "$GUEST_UID"; exit; }
 exit 1''')
+        self.mock("getent", '''[[ "$1" == passwd && "$2" == "$GUEST_USER" ]] || exit 2
+printf '%s:x:%s:1000:Guest:%s:%s\\n' "$GUEST_USER" "$GUEST_UID" "$HOME" "$CURRENT_SHELL"''')
+        self.mock("grep", '''if [[ "$REGISTERED_SHELL" == yes ]]; then exit 0; else exit 1; fi''')
+        self.mock("sudo", '''printf 'sudo %s\\n' "$*" >> "$TRACE"
+[[ "$1" == -n ]] || exit 3
+shift
+case "$1" in tee) [[ "$FAIL_STAGE" != sudo-tee ]] || exit 4; cat >/dev/null ;; chsh) [[ "$FAIL_STAGE" != sudo-chsh ]] || exit 5 ;; *) exit 6 ;; esac''')
         self.mock("uname", '''[[ "$1" == -m ]] && printf '%s\\n' "$GUEST_ARCH" || printf '%s\\n' "$GUEST_OS"''')
         self.mock("stat", '''#!/usr/bin/env python3
 import os,stat,sys
@@ -183,7 +213,7 @@ if command.startswith("bash -s --"):
     op=args[1]
     event(op)
     if op == "prepare" and os.environ.get("FAIL_STAGE")=="prepare": sys.exit(41)
-    result=subprocess.run(["/bin/bash","-s","--",*args],input=payload,env=os.environ.copy(),text=True,capture_output=True,preexec_fn=lambda:os.umask(0))
+    result=subprocess.run([{BASH!r},"-s","--",*args],input=payload,env=os.environ.copy(),text=True,capture_output=True,preexec_fn=lambda:os.umask(0))
     if op == "identity": event("observed="+repr(result.stdout))
     sys.stdout.write(result.stdout); sys.stderr.write(result.stderr); sys.exit(result.returncode)
 if "tar -xf" in command:
@@ -200,7 +230,7 @@ if "tar -xf" in command:
             output.addfile(member,stream if stream is None else io.BytesIO(stream.read()))
     with open(trace,"a") as f: f.write("members="+",".join(sorted(names))+"\\n")
     remote_env=os.environ.copy(); remote_env["HOME"]=os.environ["GUEST_HOME"]
-    result=subprocess.run(["/bin/bash","-c",command],input=packed.getvalue(),env=remote_env,capture_output=True)
+    result=subprocess.run([{BASH!r},"-c",command],input=packed.getvalue(),env=remote_env,capture_output=True)
     sys.stdout.buffer.write(result.stdout); sys.stderr.buffer.write(result.stderr); sys.exit(result.returncode)
 sys.exit(81)
 ''')
@@ -212,13 +242,17 @@ sys.exit(81)
         result = self.run_script("apply", "node")
         self.assertEqual(result.returncode, 0, result.stderr + (self.trace.read_text() if self.trace.exists() else ""))
         events = self.trace.read_text()
-        self.assertIn("members=config/home.nix,config/target.nix,flake.lock,flake.nix", events)
+        members_line = next(line for line in events.splitlines() if line.startswith("members="))
+        self.assertEqual(members_line, "members=config/home.nix,config/powerlevel10k_config.zsh,config/target.nix,flake.lock,flake.nix")
         transfer_command = next(line for line in events.splitlines() if line.startswith("transfer-command="))
         self.assertIn("umask 077", transfer_command)
         self.assertIn("--no-same-owner --no-same-permissions", transfer_command)
         self.assertLess(events.index("prepare"), events.index("transfer"))
         self.assertLess(events.index("transfer"), events.index("build"))
         self.assertLess(events.index("build"), events.index("activation"))
+        self.assertLess(events.index("activation"), events.index("set-shell"))
+        self.assertIn("sudo -n tee -a /etc/shells", events)
+        self.assertIn(f"sudo -n chsh -s {self.home}/.nix-profile/bin/zsh alice", events)
         eval_line = next(line for line in events.splitlines() if line.startswith("eval="))
         self.assertIn("path:" + str(ROOT), eval_line)
         self.assertIn("--no-update-lock-file", eval_line)
@@ -236,8 +270,9 @@ sys.exit(81)
             self.assertEqual(directory.stat().st_mode & 0o777, 0o700)
         for managed in (self.home / ".local/share/cloud-vm/flake.nix",
                         self.home / ".local/share/cloud-vm/flake.lock",
-                        self.home / ".local/share/cloud-vm/config/target.nix",
-                        self.home / ".local/share/cloud-vm/config/home.nix"):
+                         self.home / ".local/share/cloud-vm/config/target.nix",
+                         self.home / ".local/share/cloud-vm/config/home.nix",
+                         self.home / ".local/share/cloud-vm/config/powerlevel10k_config.zsh"):
             self.assertEqual(managed.stat().st_mode & 0o022, 0)
             self.assertEqual(managed.stat().st_mode & 0o777, 0o600)
         self.assertEqual(hashlib.sha256(lock_path.read_bytes()).hexdigest(), lock_before)
@@ -289,6 +324,7 @@ sys.exit(81)
                 result = self.run_script("apply", "node")
                 self.assertNotEqual(result.returncode, 0)
                 events = self.trace.read_text()
+                self.assertNotIn("set-shell", events)
                 self.assertNotIn("bootstrap", events)
                 if forbidden:
                     event_lines = events.splitlines()
@@ -296,6 +332,38 @@ sys.exit(81)
                         self.assertFalse(any(line.startswith("build=") for line in event_lines))
                     else:
                         self.assertNotIn(forbidden, event_lines)
+
+    def test_shell_step_is_idempotent_and_uses_stable_profile_path(self):
+        self.deployment_mocks()
+        zsh_path = f"{self.home}/.nix-profile/bin/zsh"
+        result = self.run_script("apply", "node")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        events = self.trace.read_text()
+        self.assertIn(f"sudo -n chsh -s {zsh_path} alice", events)
+        self.assertNotIn("/nix/store/", events)
+
+        self.trace.unlink()
+        self.deployment_mocks()
+        self.env["REGISTERED_SHELL"] = "yes"
+        self.env["CURRENT_SHELL"] = zsh_path
+        result = self.run_script("apply", "node")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        events = self.trace.read_text()
+        self.assertNotIn("sudo ", events)
+
+    def test_shell_step_fails_clearly_for_missing_zsh_and_privilege_failures(self):
+        for stage, message in (("missing-zsh", "zsh is missing"),
+                               ("sudo-tee", "cannot register zsh"),
+                               ("sudo-chsh", "cannot change login shell")):
+            with self.subTest(stage=stage):
+                self.trace.unlink(missing_ok=True)
+                self.deployment_mocks(fail_stage=stage)
+                if stage == "missing-zsh":
+                    (self.home / ".nix-profile/bin/zsh").unlink()
+                result = self.run_script("apply", "node")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(message, result.stderr)
+                self.assertIn("activation", self.trace.read_text())
 
     def test_stale_lock_evaluation_and_unsafe_destination_stop_before_transfer(self):
         self.deployment_mocks(fail_stage="eval")
@@ -312,6 +380,20 @@ sys.exit(81)
         result = self.run_script("apply", "node")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("symlink path rejected", result.stderr)
+        self.assertNotIn("transfer", self.trace.read_text())
+
+        self.trace.unlink()
+        self.home = pathlib.Path(self.temp.name) / "unsafe-config-file-home"
+        self.home.mkdir()
+        self.deployment_mocks()
+        config_dir = self.home / ".local/share/cloud-vm/config"
+        config_dir.mkdir(parents=True)
+        outside = pathlib.Path(self.temp.name) / "outside-config"
+        outside.write_text("unsafe\n")
+        (config_dir / "powerlevel10k_config.zsh").symlink_to(outside)
+        result = self.run_script("apply", "node")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unsafe input destination", result.stderr)
         self.assertNotIn("transfer", self.trace.read_text())
 
         self.trace.unlink()
