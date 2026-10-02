@@ -29,7 +29,7 @@ in {
 
   programs = {
     tmux = {
-      enable = true;
+      enable = false;
       prefix = "C-a";
       shortcut = "a";
     };
