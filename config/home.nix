@@ -2,7 +2,6 @@
   inputs,
   pkgs,
   target,
-  config,
   ...
 }: let
   defaultContext = ''
@@ -29,15 +28,62 @@ in {
   ];
 
   programs = {
+    tmux = {
+      enable = true;
+      prefix = "C-a";
+      shortcut = "a";
+    };
     home-manager.enable = true;
-    bash.enable = true;
+    bash.enable = false;
+    zsh = {
+      enable = true;
+      prezto = {
+        enable = true;
+        caseSensitive = false;
+        syntaxHighlighting.highlighters = [
+          "main"
+          "brackets"
+          "pattern"
+          "line"
+          "cursor"
+          "root"
+        ];
+        prompt = {
+          theme = "powerlevel10k";
+          showReturnVal = true;
+        };
+        pmodules = [
+          "environment"
+          "terminal"
+          "editor"
+          "history"
+          "spectrum"
+          "utility"
+          "completion" # completion module can lead to slow terminal start times
+          "syntax-highlighting"
+          "history-substring-search"
+          "ssh"
+          "tmux"
+          "git"
+          "autosuggestions"
+          "prompt"
+        ];
+        utility.safeOps = false;
+        # ssh.identities = [
+        #   "id_ed25519"
+        # ];
+        extraConfig = builtins.concatStringsSep "\n" [
+          (builtins.readFile ./powerlevel10k_config.zsh)
+        ];
+      };
+    };
     nh = {
       enable = true;
       clean = {
         enable = true;
         dates = "weekly";
       };
-      flake = "${config.home.homeDirectory}/dotfiles";
+      flake = "github:kyokley/cloud-vm";
     };
     opencode = {
       enable = true;
@@ -56,11 +102,9 @@ in {
   nix = {
     package = pkgs.nix;
     settings = {
-      extra-substituters = [
-        "https://horus.cachix.org"
-      ];
-      extra-trusted-public-keys = [
-        "horus.cachix.org-1:YZ4tQYAoKH+zkKbD4aqFcMHgZxIM7Uo4dPEfwUrubT4="
+      trusted-users = [
+        "root"
+        target.username
       ];
     };
   };
