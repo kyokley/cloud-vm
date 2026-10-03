@@ -108,4 +108,9 @@ in {
       ];
     };
   };
+
+  xdg.configFile = {
+    "opencode/opencode.json".force = true;
+    "opencode/AGENTS.md".force = true;
+  };
 }

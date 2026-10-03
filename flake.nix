@@ -11,6 +11,7 @@
       url = "github:nix-community/home-manager/release-26.05";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    nix-filter.url = "github:numtide/nix-filter";
     caveman = {
       url = "github:JuliusBrussee/caveman";
       flake = false;
@@ -42,18 +43,41 @@
       };
 
       perSystem = {
+        self',
         pkgs,
         system,
         ...
       }: {
         packages = let
+          # vm-script = builtins.readFile ./scripts/vm.sh
+          vm-script = pkgs.stdenv.mkDerivation {
+            pname = "vm-script";
+            version = "0.0.1";
+            src = ./.;
+            dontUnpack = true;
+            installPhase = ''
+              # mkdir -p $out/bin
+              # cp -r $src/config $out/config
+              # cp -r $src/scripts $out/scripts
+              mkdir $out
+              cp -r $src/* $out/
+              chmod -R +x $out/scripts
+            '';
+          };
           new-vm = pkgs.writeShellApplication {
             name = "new-vm";
             text = ''
-              ssh exe.dev new | grep ssh | awk '{print $NF}'
+              set -x
+              domain=$(ssh exe.dev new | grep ssh | awk '{print $NF}')
+              new_vm_name=$(echo "$domain" | awk -F. '{print $1}')
+              ${vm-script}/scripts/vm.sh bootstrap "$new_vm_name" --yes --allow-sudo
+              ${vm-script}/scripts/vm.sh apply "$new_vm_name"
+              kitten ssh "$domain" "true"
+              echo "new machine created: $new_vm_name"
             '';
           };
         in {
+          inherit new-vm vm-script;
         } //
           inputs.nixpkgs.lib.optionalAttrs
           (builtins.elem system [
@@ -70,6 +94,8 @@
             python3
             shellcheck
             nixfmt
+            self'.packages.new-vm
+            self'.packages.vm-script
           ];
         };
 
