@@ -64,6 +64,12 @@
               chmod -R +x $out/scripts
             '';
           };
+          ls-vm = pkgs.writeShellApplication {
+            name = "ls-vm";
+            text = ''
+              ssh exe.dev ls
+            '';
+          };
           new-vm = pkgs.writeShellApplication {
             name = "new-vm";
             text = ''
@@ -111,7 +117,7 @@
             '';
           };
         in {
-          inherit new-vm vm-script rm-vm ssh-vm;
+          inherit new-vm vm-script rm-vm ssh-vm ls-vm;
         } //
           inputs.nixpkgs.lib.optionalAttrs
           (builtins.elem system [
@@ -132,6 +138,7 @@
             self'.packages.vm-script
             self'.packages.rm-vm
             self'.packages.ssh-vm
+            self'.packages.ls-vm
           ];
         };
 

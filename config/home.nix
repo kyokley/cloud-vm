@@ -29,7 +29,7 @@ in {
 
   programs = {
     tmux = {
-      enable = false;
+      enable = true;
       prefix = "C-a";
       shortcut = "a";
     };
@@ -75,6 +75,7 @@ in {
         extraConfig = builtins.concatStringsSep "\n" [
           (builtins.readFile ./powerlevel10k_config.zsh)
         ];
+        tmux.autoStartRemote = true;
       };
     };
     nh = {
