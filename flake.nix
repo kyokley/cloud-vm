@@ -46,14 +46,22 @@
         system,
         ...
       }: {
-        packages =
+        packages = let
+          new-vm = pkgs.writeShellApplication {
+            name = "new-vm";
+            text = ''
+              ssh exe.dev new | grep ssh | awk '{print $NF}'
+            '';
+          };
+        in {
+        } //
           inputs.nixpkgs.lib.optionalAttrs
           (builtins.elem system [
             "x86_64-linux"
             "aarch64-linux"
           ])
           {
-            activationPackage = (homeFor {inherit pkgs;}).activationPackage;
+            inherit (homeFor {inherit pkgs;}) activationPackage;
           };
 
         devShells.default = pkgs.mkShell {
