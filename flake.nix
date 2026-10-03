@@ -7,13 +7,18 @@
       url = "github:nix-community/home-manager/release-26.05";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    caveman = {
+      url = "github:JuliusBrussee/caveman";
+      flake = false;
+    };
   };
 
   outputs =
-    {
+    inputs @ {
       self,
       nixpkgs,
       home-manager,
+      ...
     }:
     let
       target = import ./config/target.nix;
@@ -33,7 +38,7 @@
         home-manager.lib.homeManagerConfiguration {
           pkgs = import nixpkgs { inherit system; };
           modules = [ ./config/home.nix ];
-          extraSpecialArgs = { inherit target; };
+          extraSpecialArgs = { inherit target inputs; };
         };
       devShellFor =
         system:
