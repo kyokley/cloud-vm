@@ -67,17 +67,51 @@
           new-vm = pkgs.writeShellApplication {
             name = "new-vm";
             text = ''
-              set -x
               domain=$(ssh exe.dev new | grep ssh | awk '{print $NF}')
               new_vm_name=$(echo "$domain" | awk -F. '{print $1}')
               ${vm-script}/scripts/vm.sh bootstrap "$new_vm_name" --yes --allow-sudo
               ${vm-script}/scripts/vm.sh apply "$new_vm_name"
-              kitten ssh "$domain" "true"
+
+              echo
               echo "new machine created: $new_vm_name"
             '';
           };
+          rm-vm = pkgs.writeShellApplication {
+            name = "rm-vm";
+            runtimeInputs = with pkgs; [
+              jq
+              fzf
+            ];
+            text = ''
+              if [[ $# -eq 0 ]]; then
+                vms=$(ssh exe.dev ls --json | ${pkgs.jq}/bin/jq '.vms[].vm_name' | sed 's/"//g' | ${pkgs.fzf}/bin/fzf -m)
+              else
+                vms="$*"
+              fi
+
+              echo "$vms" | xargs -r ssh exe.dev rm
+            '';
+          };
+          ssh-vm = pkgs.writeShellApplication {
+            name = "ssh-vm";
+            runtimeInputs = with pkgs; [
+              jq
+              fzf
+            ];
+            text = ''
+              if [[ $# -eq 0 ]]; then
+                vm=$(ssh exe.dev ls --json | ${pkgs.jq}/bin/jq '.vms[].ssh_host' | sed 's/"//g' | ${pkgs.fzf}/bin/fzf)
+              else
+                vm="$*"
+              fi
+
+              if [[ -n "$vm" ]]; then
+                TERM=xterm-256color ssh -o StrictHostKeyChecking=accept-new "$vm"
+              fi
+            '';
+          };
         in {
-          inherit new-vm vm-script;
+          inherit new-vm vm-script rm-vm ssh-vm;
         } //
           inputs.nixpkgs.lib.optionalAttrs
           (builtins.elem system [
@@ -96,6 +130,8 @@
             nixfmt
             self'.packages.new-vm
             self'.packages.vm-script
+            self'.packages.rm-vm
+            self'.packages.ssh-vm
           ];
         };
 
