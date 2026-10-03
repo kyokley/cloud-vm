@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Explicit allowlist of repository files transferred to guest VMs.
+readonly guest_files=(
+  flake.nix
+  flake.lock
+  config/target.nix
+  config/home.nix
+  config/powerlevel10k_config.zsh
+)
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -88,7 +97,8 @@ guest_main() {
     done
     umask 077
     mkdir -p "$dest/config"
-    for path in "$dest/flake.nix" "$dest/flake.lock" "$dest/config/target.nix" "$dest/config/home.nix" "$dest/config/powerlevel10k_config.zsh"; do
+    for file in "${guest_files[@]}"; do
+      path="$dest/$file"
       if [[ -e "$path" || -L "$path" ]]; then
         [[ -f "$path" && ! -L "$path" && $(stat -c %u "$path") == "$(id -u)" ]] || fail_guest "unsafe input destination: $path"
       fi
@@ -180,7 +190,7 @@ apply)
   (($# == 0)) || fail 'apply accepts only NAME'
   for cmd in nix tar ssh python3; do command -v "$cmd" >/dev/null 2>&1 || fail "$cmd is required; see --help"; done
   [[ -d "$root/config" && ! -L "$root/config" ]] || fail 'required local input directory missing or unsafe: config'
-  for file in flake.nix flake.lock config/target.nix config/home.nix config/powerlevel10k_config.zsh; do [[ -f "$root/$file" && ! -L "$root/$file" ]] || fail "required local input missing or unsafe: $file"; done
+  for file in "${guest_files[@]}"; do [[ -f "$root/$file" && ! -L "$root/$file" ]] || fail "required local input missing or unsafe: $file"; done
   target_json=$(nix --extra-experimental-features 'nix-command flakes' eval --json --no-update-lock-file --no-write-lock-file "path:$root#lib.target") || fail 'cannot evaluate lib.target'
   python3 -c 'import json,re,sys; x=json.load(sys.stdin); home=x.get("homeDirectory") if isinstance(x,dict) else None; ok=isinstance(x,dict) and set(x)=={"system","username","homeDirectory"} and x["system"] in ("x86_64-linux","aarch64-linux") and re.fullmatch(r"[a-z_][a-z0-9_-]*",x["username"]) and x["username"] not in ("root","example") and isinstance(home,str) and home.startswith("/") and not any(p in (".","..") for p in home.split("/")) and not any(ord(c)<32 for c in home); sys.exit(0 if ok else 1)' <<<"$target_json" || fail 'target identity is placeholder or unsafe'
   IFS=$'\t' read -r expected_username expected_home expected_system <<<"$(python3 -c 'import json,sys; x=json.load(sys.stdin); print("\t".join((x["username"],x["homeDirectory"],x["system"])))' <<<"$target_json")"
@@ -195,7 +205,7 @@ apply)
   [[ $observed_username == "$expected_username" && $observed_home == "$expected_home" && $observed_os == Linux ]] || fail 'configured username, home, or OS does not match guest'
   case "$expected_system:$guest_arch" in x86_64-linux:x86_64 | aarch64-linux:aarch64) ;; *) fail 'configured architecture does not match guest' ;; esac
   send_guest __guest prepare || fail 'guest destination is unsafe'
-  tar -C "$root" -cf - flake.nix flake.lock config/target.nix config/home.nix config/powerlevel10k_config.zsh | ssh "$target" 'umask 077; tar -xf - -C "$HOME/.local/share/cloud-vm" --no-same-owner --no-same-permissions'
+  tar -C "$root" -cf - "${guest_files[@]}" | ssh "$target" 'umask 077; tar -xf - -C "$HOME/.local/share/cloud-vm" --no-same-owner --no-same-permissions'
   nixbin=$(send_guest __guest nix-path) || fail 'guest has no usable Nix'
   send_guest __guest build "$nixbin"
   send_guest __guest activate "$nixbin"

@@ -1,5 +1,41 @@
 {
   "nodes": {
+    "caveman": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1791009926,
+        "narHash": "sha256-yJuNLbYsGq33/7NaoZRwmmI9t35ALM3aM3obpllnmWM=",
+        "owner": "JuliusBrussee",
+        "repo": "caveman",
+        "rev": "aeb45e2f787c0757a8af383a291a280cb6aeb4c1",
+        "type": "github"
+      },
+      "original": {
+        "owner": "JuliusBrussee",
+        "repo": "caveman",
+        "type": "github"
+      }
+    },
+    "flake-parts": {
+      "inputs": {
+        "nixpkgs-lib": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1790898470,
+        "narHash": "sha256-zTwuwezD0w3hpga6a6P8emidzAZFyWqlNeRBlpWOOl8=",
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "rev": "024633cd702b10285db5cb19b40ad48d2399ba60",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "type": "github"
+      }
+    },
     "home-manager": {
       "inputs": {
         "nixpkgs": [
@@ -39,6 +75,8 @@
     },
     "root": {
       "inputs": {
+        "caveman": "caveman",
+        "flake-parts": "flake-parts",
         "home-manager": "home-manager",
         "nixpkgs": "nixpkgs"
       }

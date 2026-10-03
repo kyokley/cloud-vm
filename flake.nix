@@ -3,6 +3,10 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+    flake-parts = {
+      url = "github:hercules-ci/flake-parts";
+      inputs.nixpkgs-lib.follows = "nixpkgs";
+    };
     home-manager = {
       url = "github:nix-community/home-manager/release-26.05";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -13,39 +17,46 @@
     };
   };
 
-  outputs =
-    inputs @ {
-      self,
-      nixpkgs,
-      home-manager,
-      ...
-    }:
-    let
-      target = import ./config/target.nix;
-      linuxSystems = [
-        "x86_64-linux"
-        "aarch64-linux"
-      ];
-      devSystems = [
+  outputs = inputs: let
+    target = import ./config/target.nix;
+    homeFor = {pkgs, ...}:
+      inputs.home-manager.lib.homeManagerConfiguration {
+        inherit pkgs;
+        modules = [./config/home.nix];
+        extraSpecialArgs = {inherit target inputs;};
+      };
+  in
+    inputs.flake-parts.lib.mkFlake {inherit inputs;} {
+      systems = [
         "x86_64-linux"
         "aarch64-linux"
         "x86_64-darwin"
         "aarch64-darwin"
       ];
-      forSystems = systems: function: nixpkgs.lib.genAttrs systems (system: function system);
-      homeFor =
-        system:
-        home-manager.lib.homeManagerConfiguration {
-          pkgs = import nixpkgs { inherit system; };
-          modules = [ ./config/home.nix ];
-          extraSpecialArgs = { inherit target inputs; };
+
+      flake = {
+        lib.target = target;
+        homeConfigurations.vm = homeFor {
+          pkgs = import inputs.nixpkgs {system = target.system;};
         };
-      devShellFor =
-        system:
-        let
-          pkgs = import nixpkgs { inherit system; };
-        in
-        pkgs.mkShell {
+      };
+
+      perSystem = {
+        pkgs,
+        system,
+        ...
+      }: {
+        packages =
+          inputs.nixpkgs.lib.optionalAttrs
+          (builtins.elem system [
+            "x86_64-linux"
+            "aarch64-linux"
+          ])
+          {
+            activationPackage = (homeFor {inherit pkgs;}).activationPackage;
+          };
+
+        devShells.default = pkgs.mkShell {
           packages = with pkgs; [
             bash
             python3
@@ -53,20 +64,8 @@
             nixfmt
           ];
         };
-    in
-    {
-      lib.target = target;
 
-      homeConfigurations.vm = homeFor target.system;
-
-      packages = forSystems linuxSystems (system: {
-        activationPackage = (homeFor system).activationPackage;
-      });
-
-      devShells = forSystems devSystems (system: {
-        default = devShellFor system;
-      });
-
-      formatter = forSystems devSystems (system: (import nixpkgs { inherit system; }).nixfmt);
+        formatter = pkgs.nixfmt;
+      };
     };
 }
