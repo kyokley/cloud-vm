@@ -58,6 +58,7 @@ in {
 
     packages = with pkgs; [
       git
+      jujutsu
       curl
       jq
       ripgrep
@@ -181,5 +182,6 @@ in {
   xdg.configFile = {
     "opencode/opencode.json".force = true;
     "opencode/AGENTS.md".force = true;
+    "opencode/skills/exe-dev/SKILL.md".source = ./skills/exe-dev/SKILL.md;
   };
 }

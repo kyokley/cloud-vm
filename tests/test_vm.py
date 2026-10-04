@@ -46,6 +46,7 @@ class VmTests(unittest.TestCase):
         self.assertIn("inspect NAME", result.stdout)
         self.assertIn("bootstrap NAME --yes --allow-sudo", result.stdout)
         self.assertIn("config/powerlevel10k_config.zsh", result.stdout)
+        self.assertIn("config/skills/exe-dev/SKILL.md", result.stdout)
         self.assertNotEqual(self.run_script("inspect", "Bad_Name").returncode, 0)
 
     def test_exact_gateway_and_guest_inspect_payload(self):
@@ -256,7 +257,7 @@ sys.exit(81)
         self.assertEqual(result.returncode, 0, result.stderr + (self.trace.read_text() if self.trace.exists() else ""))
         events = self.trace.read_text()
         members_line = next(line for line in events.splitlines() if line.startswith("members="))
-        self.assertEqual(members_line, "members=config/_bun.nix,config/bun.lock,config/home.nix,config/package.json,config/powerlevel10k_config.zsh,config/stacked-jj-prs.md,config/target.nix,flake.lock,flake.nix")
+        self.assertEqual(members_line, "members=config/_bun.nix,config/bun.lock,config/home.nix,config/package.json,config/powerlevel10k_config.zsh,config/skills/exe-dev/SKILL.md,config/stacked-jj-prs.md,config/target.nix,flake.lock,flake.nix")
         transfer_command = next(line for line in events.splitlines() if line.startswith("transfer-command="))
         self.assertIn("umask 077", transfer_command)
         self.assertIn("--no-same-owner --no-same-permissions", transfer_command)
@@ -279,7 +280,9 @@ sys.exit(81)
         self.assertIn("--no-write-lock-file", build_line)
         self.assertTrue((self.home / ".local/share/cloud-vm/flake.nix").is_file())
         for directory in (self.home / ".local", self.home / ".local/share",
-                          self.home / ".local/share/cloud-vm", self.home / ".local/share/cloud-vm/config"):
+                          self.home / ".local/share/cloud-vm", self.home / ".local/share/cloud-vm/config",
+                          self.home / ".local/share/cloud-vm/config/skills",
+                          self.home / ".local/share/cloud-vm/config/skills/exe-dev"):
             self.assertEqual(directory.stat().st_mode & 0o777, 0o700)
         for managed in (self.home / ".local/share/cloud-vm/flake.nix",
                         self.home / ".local/share/cloud-vm/flake.lock",
@@ -287,19 +290,21 @@ sys.exit(81)
                          self.home / ".local/share/cloud-vm/config/home.nix",
                          self.home / ".local/share/cloud-vm/config/powerlevel10k_config.zsh",
                          self.home / ".local/share/cloud-vm/config/_bun.nix",
-                         self.home / ".local/share/cloud-vm/config/package.json",
-                         self.home / ".local/share/cloud-vm/config/bun.lock",
-                         self.home / ".local/share/cloud-vm/config/stacked-jj-prs.md"):
+                          self.home / ".local/share/cloud-vm/config/package.json",
+                          self.home / ".local/share/cloud-vm/config/bun.lock",
+                          self.home / ".local/share/cloud-vm/config/stacked-jj-prs.md",
+                          self.home / ".local/share/cloud-vm/config/skills/exe-dev/SKILL.md"):
             self.assertEqual(managed.stat().st_mode & 0o022, 0)
             self.assertEqual(managed.stat().st_mode & 0o777, 0o600)
         for relative in ("flake.nix", "flake.lock", "config/target.nix", "config/home.nix",
                          "config/powerlevel10k_config.zsh", "config/_bun.nix",
-                         "config/package.json", "config/bun.lock", "config/stacked-jj-prs.md"):
+                         "config/package.json", "config/bun.lock", "config/stacked-jj-prs.md",
+                         "config/skills/exe-dev/SKILL.md"):
             self.assertEqual((self.home / ".local/share/cloud-vm" / relative).read_bytes(), (ROOT / relative).read_bytes())
         self.assertEqual(hashlib.sha256(lock_path.read_bytes()).hexdigest(), lock_before)
 
     def test_group_or_other_writable_existing_directories_stop_before_transfer(self):
-        for name in ("home", "parent", "destination", "config"):
+        for name in ("home", "parent", "destination", "config", "skills", "skill"):
             with self.subTest(path=name):
                 self.trace.unlink(missing_ok=True)
                 self.home = pathlib.Path(self.temp.name) / f"{name}-home"
@@ -312,8 +317,14 @@ sys.exit(81)
                 else:
                     destination = self.home / ".local/share/cloud-vm"
                     destination.mkdir(parents=True, mode=0o700)
-                    affected = destination if name == "destination" else destination / "config"
-                    if name == "config": affected.mkdir(mode=0o777)
+                    paths = {
+                        "destination": destination,
+                        "config": destination / "config",
+                        "skills": destination / "config/skills",
+                        "skill": destination / "config/skills/exe-dev",
+                    }
+                    affected = paths[name]
+                    affected.mkdir(parents=True, mode=0o700, exist_ok=True)
                 affected.chmod(0o777)
                 self.deployment_mocks()
                 result = self.run_script("apply", "node")

@@ -12,6 +12,7 @@ readonly guest_files=(
   config/bun.lock
   config/package.json
   config/stacked-jj-prs.md
+  config/skills/exe-dev/SKILL.md
 )
 
 usage() {
@@ -25,7 +26,8 @@ NAME is a lowercase VM name. SSH target is vm+NAME@vm.exe.xyz; normal host-key
 checking remains enabled. --installer-file names a file already on the guest.
 Apply transfers only flake.nix, flake.lock, config/target.nix, config/home.nix,
 config/powerlevel10k_config.zsh, config/_bun.nix, config/package.json,
-config/bun.lock, and config/stacked-jj-prs.md. Add local inputs only by deliberate allowlist changes here.
+config/bun.lock, config/stacked-jj-prs.md, and config/skills/exe-dev/SKILL.md.
+Add local inputs only by deliberate allowlist changes here.
 Apply needs local nix, tar, ssh, and Python 3. Deployment does not bootstrap Nix.
 EOF
 }
@@ -97,11 +99,11 @@ guest_main() {
     [[ $(id -u) -ne 0 ]] || fail_guest 'root target is not supported'
     dest="$HOME/.local/share/cloud-vm"
     [[ "$dest" == "$HOME"/* ]] || fail_guest 'unsafe home directory'
-    for path in "$HOME" "$HOME/.local" "$HOME/.local/share" "$dest" "$dest/config"; do
+    for path in "$HOME" "$HOME/.local" "$HOME/.local/share" "$dest" "$dest/config" "$dest/config/skills" "$dest/config/skills/exe-dev"; do
       check_directory "$path"
     done
     umask 077
-    mkdir -p "$dest/config"
+    mkdir -p "$dest/config/skills/exe-dev"
     for file in "${guest_files[@]}"; do
       path="$dest/$file"
       if [[ -e "$path" || -L "$path" ]]; then
