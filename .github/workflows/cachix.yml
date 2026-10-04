@@ -1,0 +1,59 @@
+name: Cachix
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build (${{ matrix.system }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - system: x86_64-linux
+            runner: ubuntu-24.04
+          - system: aarch64-linux
+            runner: ubuntu-24.04-arm
+          - system: x86_64-darwin
+            runner: macos-15-intel
+          - system: aarch64-darwin
+            runner: macos-15
+    env:
+      SYSTEM: ${{ matrix.system }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: cachix/cachix-action@v17
+        with:
+          name: horus
+          authToken: ${{ github.event_name != 'pull_request' && secrets.CACHIX_AUTH_TOKEN || '' }}
+
+      - name: Build packages and standard outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          package_names="$(nix eval --json ".#packages.${SYSTEM}" --apply builtins.attrNames | jq -r '.[]')"
+          installables=()
+          while IFS= read -r package; do
+            [[ -n "$package" ]] && installables+=(".#packages.${SYSTEM}.${package}")
+          done <<< "$package_names"
+
+          installables+=(".#devShells.${SYSTEM}.default")
+          installables+=(".#formatter.${SYSTEM}")
+
+          nix build --no-link --print-build-logs "${installables[@]}"
