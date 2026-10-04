@@ -165,6 +165,12 @@ in {
           "${npm_deps}/oh-my-opencode-slim/dist/index.js"
           "opencode-skill-creator"
         ];
+        permission = {
+          external_directory = {
+            "/nix/store/**" = "allow";
+            "/tmp/**" = "allow";
+          };
+        };
       };
     };
   };
