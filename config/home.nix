@@ -196,5 +196,9 @@ in {
   xdg.configFile = {
     "opencode/opencode.json".force = true;
     "opencode/AGENTS.md".force = true;
+    "opencode/skills/mattermost-monitor/scripts" = {
+      source = ./skills/mattermost-monitor/scripts;
+      recursive = true;
+    };
   };
 }
