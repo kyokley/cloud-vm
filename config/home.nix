@@ -160,6 +160,7 @@ in {
       ];
       skills = {
         exe-dev = ./skills/exe-dev/SKILL.md;
+        mattermost-proxy-pat = ./skills/mattermost-proxy-pat/SKILL.md;
       };
       settings = {
         autoupdate = false;
