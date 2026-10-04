@@ -9,6 +9,7 @@ readonly guest_files=(
   config/home.nix
   config/powerlevel10k_config.zsh
   config/_bun.nix
+  config/bun.lock
   config/package.json
   config/stacked-jj-prs.md
 )
