@@ -295,13 +295,24 @@ sys.exit(81)
                           self.home / ".local/share/cloud-vm/config/package.json",
                           self.home / ".local/share/cloud-vm/config/bun.lock",
                           self.home / ".local/share/cloud-vm/config/skills/stacked-jj-prs/SKILL.md",
-                          self.home / ".local/share/cloud-vm/config/skills/exe-dev/SKILL.md"):
+                          self.home / ".local/share/cloud-vm/config/skills/exe-dev/SKILL.md",
+                          self.home / ".local/share/cloud-vm/config/skills/mattermost-monitor/SKILL.md",
+                          self.home / ".local/share/cloud-vm/config/skills/mattermost-monitor/scripts/mark_replied.sh",
+                          self.home / ".local/share/cloud-vm/config/skills/mattermost-monitor/scripts/mattermost.env.example",
+                          self.home / ".local/share/cloud-vm/config/skills/mattermost-monitor/scripts/monitor.sh",
+                          self.home / ".local/share/cloud-vm/config/skills/mattermost-monitor/scripts/post_reply.sh",
+                          self.home / ".local/share/cloud-vm/config/skills/mattermost-monitor/scripts/wait_for_events.sh"):
             self.assertEqual(managed.stat().st_mode & 0o022, 0)
             self.assertEqual(managed.stat().st_mode & 0o777, 0o600)
         for relative in ("flake.nix", "flake.lock", "config/target.nix", "config/home.nix",
                          "config/powerlevel10k_config.zsh", "config/_bun.nix",
                          "config/package.json", "config/bun.lock", "config/skills/stacked-jj-prs/SKILL.md",
-                         "config/skills/exe-dev/SKILL.md"):
+                         "config/skills/exe-dev/SKILL.md", "config/skills/mattermost-monitor/SKILL.md",
+                         "config/skills/mattermost-monitor/scripts/mark_replied.sh",
+                         "config/skills/mattermost-monitor/scripts/mattermost.env.example",
+                         "config/skills/mattermost-monitor/scripts/monitor.sh",
+                         "config/skills/mattermost-monitor/scripts/post_reply.sh",
+                         "config/skills/mattermost-monitor/scripts/wait_for_events.sh"):
             self.assertEqual((self.home / ".local/share/cloud-vm" / relative).read_bytes(), (ROOT / relative).read_bytes())
         self.assertEqual(hashlib.sha256(lock_path.read_bytes()).hexdigest(), lock_before)
 

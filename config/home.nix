@@ -161,7 +161,7 @@ in {
       skills = {
         exe-dev = ./skills/exe-dev/SKILL.md;
         mattermost-proxy-pat = ./skills/mattermost-proxy-pat/SKILL.md;
-        mattermost-monitor = ./skills/mattermost-monitor/SKILL.md;
+        mattermost-monitor = ./skills/mattermost-monitor;
         stacked-jj-prs = ./skills/stacked-jj-prs/SKILL.md;
       };
       settings = {
