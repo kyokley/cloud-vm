@@ -81,11 +81,12 @@
               new_vm_name=$(echo "$domain" | awk -F. '{print $1}')
               echo "wait 5 secs for $new_vm_name to come up"
               sleep 5
+              echo "begin bootstrapping nix"
               ${vm-script}/scripts/vm.sh bootstrap "$new_vm_name" --yes --allow-sudo
               ${vm-script}/scripts/vm.sh apply "$new_vm_name"
 
               echo
-              echo "new machine created: $new_vm_name"
+              echo "new machine created: $new_vm_name domain: $domain"
             '';
           };
           rm-vm = pkgs.writeShellApplication {
@@ -96,7 +97,7 @@
             ];
             text = ''
               if [[ $# -eq 0 ]]; then
-                vms=$(ssh exe.dev ls --json | ${pkgs.jq}/bin/jq '.vms[].vm_name' | sed 's/"//g' | ${pkgs.fzf}/bin/fzf -m)
+                vms=$(ssh exe.dev ls --json | ${pkgs.jq}/bin/jq '.vms[].vm_name' | sed 's/"//g' | ${pkgs.fzf}/bin/fzf -m --marker='>' --cycle)
               else
                 vms="$*"
               fi
