@@ -11,7 +11,7 @@ readonly guest_files=(
   config/_bun.nix
   config/bun.lock
   config/package.json
-  config/skills/stacked-jj-prs.md/SKILL.md
+  config/skills/stacked-jj-prs/SKILL.md
   config/skills/exe-dev/SKILL.md
   config/skills/mattermost-proxy-pat/SKILL.md
   config/skills/mattermost-monitor/SKILL.md
