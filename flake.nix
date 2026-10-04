@@ -79,6 +79,8 @@
             text = ''
               domain=$(ssh exe.dev new | grep ssh | awk '{print $NF}')
               new_vm_name=$(echo "$domain" | awk -F. '{print $1}')
+              echo "wait 5 secs for $new_vm_name to come up"
+              sleep 5
               ${vm-script}/scripts/vm.sh bootstrap "$new_vm_name" --yes --allow-sudo
               ${vm-script}/scripts/vm.sh apply "$new_vm_name"
 

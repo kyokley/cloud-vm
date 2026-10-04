@@ -130,6 +130,19 @@ cat >/dev/null
         result = subprocess.run([str(script), "apply", "node"], env=self.env, text=True, capture_output=True)
         self.assertIn("required local input missing or unsafe: config/powerlevel10k_config.zsh", result.stderr)
 
+        for name in ("flake.lock", "config/target.nix", "config/home.nix", "config/_bun.nix",
+                     "config/package.json", "config/stacked-jj-prs.md"):
+            (repo / name).write_text("{}\n")
+        (repo / "config/powerlevel10k_config.zsh").unlink()
+        (repo / "config/powerlevel10k_config.zsh").write_text("{}\n")
+        result = subprocess.run([str(script), "apply", "node"], env=self.env, text=True, capture_output=True)
+        self.assertIn("required local input missing or unsafe: config/bun.lock", result.stderr)
+        self.assertFalse(self.trace.exists())
+        (repo / "config/bun.lock").symlink_to(pathlib.Path(self.temp.name) / "outside-lock")
+        result = subprocess.run([str(script), "apply", "node"], env=self.env, text=True, capture_output=True)
+        self.assertIn("required local input missing or unsafe: config/bun.lock", result.stderr)
+        self.assertFalse(self.trace.exists())
+
     def test_apply_rejects_example_identity_before_ssh(self):
         self.mock("nix", 'printf \'{"system":"x86_64-linux","username":"example","homeDirectory":"/home/example"}\\n\'')
         for cmd in ("tar", "ssh", "python3"):
@@ -243,7 +256,7 @@ sys.exit(81)
         self.assertEqual(result.returncode, 0, result.stderr + (self.trace.read_text() if self.trace.exists() else ""))
         events = self.trace.read_text()
         members_line = next(line for line in events.splitlines() if line.startswith("members="))
-        self.assertEqual(members_line, "members=config/home.nix,config/powerlevel10k_config.zsh,config/target.nix,flake.lock,flake.nix")
+        self.assertEqual(members_line, "members=config/_bun.nix,config/bun.lock,config/home.nix,config/package.json,config/powerlevel10k_config.zsh,config/stacked-jj-prs.md,config/target.nix,flake.lock,flake.nix")
         transfer_command = next(line for line in events.splitlines() if line.startswith("transfer-command="))
         self.assertIn("umask 077", transfer_command)
         self.assertIn("--no-same-owner --no-same-permissions", transfer_command)
@@ -272,9 +285,17 @@ sys.exit(81)
                         self.home / ".local/share/cloud-vm/flake.lock",
                          self.home / ".local/share/cloud-vm/config/target.nix",
                          self.home / ".local/share/cloud-vm/config/home.nix",
-                         self.home / ".local/share/cloud-vm/config/powerlevel10k_config.zsh"):
+                         self.home / ".local/share/cloud-vm/config/powerlevel10k_config.zsh",
+                         self.home / ".local/share/cloud-vm/config/_bun.nix",
+                         self.home / ".local/share/cloud-vm/config/package.json",
+                         self.home / ".local/share/cloud-vm/config/bun.lock",
+                         self.home / ".local/share/cloud-vm/config/stacked-jj-prs.md"):
             self.assertEqual(managed.stat().st_mode & 0o022, 0)
             self.assertEqual(managed.stat().st_mode & 0o777, 0o600)
+        for relative in ("flake.nix", "flake.lock", "config/target.nix", "config/home.nix",
+                         "config/powerlevel10k_config.zsh", "config/_bun.nix",
+                         "config/package.json", "config/bun.lock", "config/stacked-jj-prs.md"):
+            self.assertEqual((self.home / ".local/share/cloud-vm" / relative).read_bytes(), (ROOT / relative).read_bytes())
         self.assertEqual(hashlib.sha256(lock_path.read_bytes()).hexdigest(), lock_before)
 
     def test_group_or_other_writable_existing_directories_stop_before_transfer(self):
@@ -391,6 +412,18 @@ sys.exit(81)
         outside = pathlib.Path(self.temp.name) / "outside-config"
         outside.write_text("unsafe\n")
         (config_dir / "powerlevel10k_config.zsh").symlink_to(outside)
+        result = self.run_script("apply", "node")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unsafe input destination", result.stderr)
+        self.assertNotIn("transfer", self.trace.read_text())
+
+        self.trace.unlink()
+        self.home = pathlib.Path(self.temp.name) / "unsafe-bun-lock-home"
+        self.home.mkdir()
+        self.deployment_mocks()
+        config_dir = self.home / ".local/share/cloud-vm/config"
+        config_dir.mkdir(parents=True)
+        (config_dir / "bun.lock").symlink_to(outside)
         result = self.run_script("apply", "node")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("unsafe input destination", result.stderr)
