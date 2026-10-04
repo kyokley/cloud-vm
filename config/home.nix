@@ -176,7 +176,7 @@ in {
           external_directory = {
             "/nix/store/**" = "allow";
             "/tmp/**" = "allow";
-            "${config.home.homeDirectory}/.config/**" = "allow";
+            "${config.home.homeDirectory}/**" = "allow";
           };
         };
       };
