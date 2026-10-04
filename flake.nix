@@ -94,16 +94,9 @@
             runtimeInputs = with pkgs; [
               jq
               fzf
+              openssh
             ];
-            text = ''
-              if [[ $# -eq 0 ]]; then
-                vms=$(ssh exe.dev ls --json | ${pkgs.jq}/bin/jq '.vms[].vm_name' | sed 's/"//g' | ${pkgs.fzf}/bin/fzf -m --marker='>' --cycle)
-              else
-                vms="$*"
-              fi
-
-              echo "$vms" | xargs -r ssh exe.dev rm
-            '';
+            text = builtins.readFile ./scripts/rm-vm.sh;
           };
           ssh-vm = pkgs.writeShellApplication {
             name = "ssh-vm";

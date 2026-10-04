@@ -8,6 +8,7 @@ This project configures user packages and settings on an existing exe.dev Linux 
 - `config/target.nix`: explicit Linux system, guest username, and absolute home directory. Example values are placeholders.
 - `config/home.nix`: user packages and Home Manager settings.
 - `scripts/vm.sh`: inspect, bootstrap, and apply commands.
+- `scripts/rm-vm.sh`: deactivate VM-matched Mattermost users and remove VMs.
 - `scripts/bootstrap-nix.sh`: guest-side Nix installer checks and execution.
 - `tests/`: mocked helper tests.
 - `docs/design.md`: scope and safety contracts.
@@ -35,6 +36,17 @@ scripts/vm.sh inspect my-vm
 ```
 
 The helper connects to `vm+my-vm@vm.exe.xyz`. SSH host-key checking stays enabled; verify the host key as usual. Do not proceed if the inspected account is root, the VM lacks usable systemd, or its Linux architecture is unsupported.
+
+## Remove VMs
+
+`rm-vm` keeps its interactive multi-select flow when called without VM names. Pass one or more VM names to select them directly. Before each VM deletion, it SSHes into that VM and deactivates active Mattermost users whose usernames start with the remote hostname plus `-` and have a nonempty suffix. Users such as `bot-*` are not selected unless they match that exact hostname prefix. Mattermost deactivation uses `DELETE /api/v4/users/{id}` without `permanent=true`; this archives the account and revokes sessions, but does not permanently delete the account. Cleanup or API errors stop processing and prevent deletion of that VM and later VMs. No extra confirmation is requested.
+
+```sh
+rm-vm
+rm-vm my-vm another-vm
+```
+
+The Mattermost API must be reachable through the VM's network proxy. This operation has no retries for deactivation requests. Review selected names before running; VM removal is destructive.
 
 ## Bootstrap Nix
 
