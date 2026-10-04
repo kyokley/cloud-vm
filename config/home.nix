@@ -14,22 +14,37 @@
 
   oh_my_opencode_slim = {
     autoUpdate = false;
-    preset = "opencode-zen";
+    preset = "opencode-free";
     presets = {
+      # opencode-free = {
+      #   orchestrator = {model = "opencode/mimo-v2.5-free";};
+      #   oracle = {
+      #     model = "opencode/nemotron-3-ultra-free";
+      #     variant = "max";
+      #   };
+      #   librarian = {model = "opencode/mimo-v2.5-free";};
+      #   explorer = {model = "opencode/ling-3.0-flash-fin-free";};
+      #   designer = {model = "opencode/muse-spark-1.2-contributor-free";};
+      #   fixer = {
+      #     model = "opencode/nemotron-3.5-lightning-free";
+      #     variant = "high";
+      #   };
+      #   council = {model = "opencode/mimo-v2.5-free";};
+      # };
       opencode-free = {
-        orchestrator = {model = "opencode/mimo-v2.5-free";};
+        orchestrator = {model = "opencode/big-pickle";};
         oracle = {
-          model = "opencode/nemotron-3-ultra-free";
+          model = "opencode/big-pickle";
           variant = "max";
         };
-        librarian = {model = "opencode/mimo-v2.5-free";};
-        explorer = {model = "opencode/ling-3.0-flash-fin-free";};
-        designer = {model = "opencode/muse-spark-1.2-contributor-free";};
+        librarian = {model = "opencode/big-pickle";};
+        explorer = {model = "opencode/big-pickle";};
+        designer = {model = "opencode/big-pickle";};
         fixer = {
-          model = "opencode/nemotron-3.5-lightning-free";
+          model = "opencode/big-pickle";
           variant = "high";
         };
-        council = {model = "opencode/mimo-v2.5-free";};
+        council = {model = "opencode/big-pickle";};
       };
     };
   };
