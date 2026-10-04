@@ -15,23 +15,17 @@
 
   oh_my_opencode_slim = {
     autoUpdate = false;
-    preset = "opencode-free";
+    preset = "opencode-fast";
     presets = {
-      # opencode-free = {
-      #   orchestrator = {model = "opencode/mimo-v2.5-free";};
-      #   oracle = {
-      #     model = "opencode/nemotron-3-ultra-free";
-      #     variant = "max";
-      #   };
-      #   librarian = {model = "opencode/mimo-v2.5-free";};
-      #   explorer = {model = "opencode/ling-3.0-flash-fin-free";};
-      #   designer = {model = "opencode/muse-spark-1.2-contributor-free";};
-      #   fixer = {
-      #     model = "opencode/nemotron-3.5-lightning-free";
-      #     variant = "high";
-      #   };
-      #   council = {model = "opencode/mimo-v2.5-free";};
-      # };
+      opencode-fast = {
+        orchestrator = {model = "opencode/mimo-v2.6-flash-free";};
+        oracle = {model = "opencode/nemotron-3-ultra-free";};
+        librarian = {model = "opencode/mimo-v2.6-flash-free";};
+        explorer = {model = "opencode/ling-3.1-flash-free";};
+        designer = {model = "opencode/muse-spark-1.3-contributor-free";};
+        fixer = {model = "opencode/nemotron-3.5-lightning-free";};
+        council = {model = "opencode/mimo-v2.6-flash-free";};
+      };
       opencode-free = {
         orchestrator = {model = "opencode/big-pickle";};
         oracle = {
