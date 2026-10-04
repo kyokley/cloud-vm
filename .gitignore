@@ -2,3 +2,5 @@
 __pycache__/
 result
 result-*
+
+node_modules

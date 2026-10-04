@@ -1,0 +1,13 @@
+{
+  "name": "opencode",
+  "version": "1.0.0",
+  "dependencies": {
+    "detect-terminal": "^3.0.0",
+    "node-notifier": "^10.0.1",
+    "oh-my-opencode-slim": "^2.2.25",
+    "opencode-skill-creator": "^0.2.25"
+  },
+  "scripts": {
+    "postinstall": "bun2nix -o _bun.nix"
+  }
+}

@@ -8,6 +8,9 @@ readonly guest_files=(
   config/target.nix
   config/home.nix
   config/powerlevel10k_config.zsh
+  config/_bun.nix
+  config/package.json
+  config/stacked-jj-prs.md
 )
 
 usage() {

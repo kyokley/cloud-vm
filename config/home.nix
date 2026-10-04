@@ -11,21 +11,51 @@
 
     Only use documented exe.dev features (see https://exe.dev/docs.md). Undocumented local endpoints are internal infrastructure—unstable and unsupported.
   '';
+
+  oh_my_opencode_slim = {
+    autoUpdate = false;
+    preset = "opencode-zen";
+    presets = {
+      opencode-free = {
+        orchestrator = {model = "opencode/mimo-v2.5-free";};
+        oracle = {
+          model = "opencode/nemotron-3-ultra-free";
+          variant = "max";
+        };
+        librarian = {model = "opencode/mimo-v2.5-free";};
+        explorer = {model = "opencode/ling-3.0-flash-fin-free";};
+        designer = {model = "opencode/muse-spark-1.2-contributor-free";};
+        fixer = {
+          model = "opencode/nemotron-3.5-lightning-free";
+          variant = "high";
+        };
+        council = {model = "opencode/mimo-v2.5-free";};
+      };
+    };
+  };
 in {
-  home.username = target.username;
-  home.homeDirectory = target.homeDirectory;
+  home = {
+    username = target.username;
+    homeDirectory = target.homeDirectory;
 
-  # Keep this stable after initial deployment; changing it does not migrate state.
-  home.stateVersion = "26.05";
+    # Keep this stable after initial deployment; changing it does not migrate state.
+    stateVersion = "26.05";
 
-  home.packages = with pkgs; [
-    git
-    curl
-    jq
-    ripgrep
-    tmux
-    nix-search-cli
-  ];
+    packages = with pkgs; [
+      git
+      curl
+      jq
+      ripgrep
+      tmux
+      nix-search-cli
+    ];
+
+    file = {
+      ".config/opencode/oh-my-opencode-slim.json" = {
+        text = builtins.toJSON oh_my_opencode_slim;
+      };
+    };
+  };
 
   programs = {
     tmux = {
@@ -86,7 +116,26 @@ in {
       };
       flake = "github:kyokley/cloud-vm";
     };
-    opencode = {
+    opencode = let
+      bun2nix-lib = inputs.bun2nix.packages.${pkgs.stdenv.hostPlatform.system}.default;
+      npm_deps = bun2nix-lib.mkDerivation {
+        packageJson = ./package.json;
+        src = ./.;
+
+        bunDeps = bun2nix-lib.fetchBunDeps {
+          bunNix = ./_bun.nix;
+        };
+
+        module = "package.json";
+        dontUseBunBuild = true;
+        dontRunLifecycleScripts = true;
+        installPhase = ''
+          runHook preInstall
+          cp -R node_modules "$out"
+          runHook postInstall
+        '';
+      };
+    in {
       enable = true;
       context = builtins.concatStringsSep "\n" [
         defaultContext
@@ -96,6 +145,10 @@ in {
         autoupdate = false;
         model = "opencode/big-pickle";
         small_model = "opencode/big-pickle";
+        plugin = [
+          "${npm_deps}/oh-my-opencode-slim/dist/index.js"
+          "opencode-skill-creator"
+        ];
       };
     };
   };

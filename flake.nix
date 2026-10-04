@@ -16,6 +16,10 @@
       url = "github:JuliusBrussee/caveman";
       flake = false;
     };
+    bun2nix = {
+      url = "github:nix-community/bun2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs: let
@@ -131,6 +135,8 @@
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
             bash
+            bun
+            inputs.bun2nix.packages.${pkgs.stdenv.hostPlatform.system}.default
             python3
             shellcheck
             nixfmt
