@@ -33,7 +33,8 @@ NAME is a lowercase VM name. SSH target is vm+NAME@vm.exe.xyz; normal host-key
 checking remains enabled. --installer-file names a file already on the guest.
 Apply transfers only flake.nix, flake.lock, config/target.nix, config/home.nix,
 config/powerlevel10k_config.zsh, config/_bun.nix, config/package.json,
-config/bun.lock, config/stacked-jj-prs.md, and config/skills/exe-dev/SKILL.md.
+config/bun.lock, config/skills/stacked-jj-prs/SKILL.md, and
+config/skills/exe-dev/SKILL.md.
 Add local inputs only by deliberate allowlist changes here.
 Apply needs local nix, tar, ssh, and Python 3. Deployment does not bootstrap Nix.
 EOF

@@ -132,8 +132,10 @@ cat >/dev/null
         self.assertIn("required local input missing or unsafe: config/powerlevel10k_config.zsh", result.stderr)
 
         for name in ("flake.lock", "config/target.nix", "config/home.nix", "config/_bun.nix",
-                     "config/package.json", "config/stacked-jj-prs.md"):
-            (repo / name).write_text("{}\n")
+                     "config/package.json", "config/skills/stacked-jj-prs/SKILL.md"):
+            path = repo / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("{}\n")
         (repo / "config/powerlevel10k_config.zsh").unlink()
         (repo / "config/powerlevel10k_config.zsh").write_text("{}\n")
         result = subprocess.run([str(script), "apply", "node"], env=self.env, text=True, capture_output=True)
@@ -257,7 +259,7 @@ sys.exit(81)
         self.assertEqual(result.returncode, 0, result.stderr + (self.trace.read_text() if self.trace.exists() else ""))
         events = self.trace.read_text()
         members_line = next(line for line in events.splitlines() if line.startswith("members="))
-        self.assertEqual(members_line, "members=config/_bun.nix,config/bun.lock,config/home.nix,config/package.json,config/powerlevel10k_config.zsh,config/skills/exe-dev/SKILL.md,config/stacked-jj-prs.md,config/target.nix,flake.lock,flake.nix")
+        self.assertEqual(members_line, "members=config/_bun.nix,config/bun.lock,config/home.nix,config/package.json,config/powerlevel10k_config.zsh,config/skills/exe-dev/SKILL.md,config/skills/mattermost-monitor/SKILL.md,config/skills/mattermost-monitor/scripts/mark_replied.sh,config/skills/mattermost-monitor/scripts/mattermost.env.example,config/skills/mattermost-monitor/scripts/monitor.sh,config/skills/mattermost-monitor/scripts/post_reply.sh,config/skills/mattermost-monitor/scripts/wait_for_events.sh,config/skills/mattermost-proxy-pat/SKILL.md,config/skills/stacked-jj-prs/SKILL.md,config/target.nix,flake.lock,flake.nix")
         transfer_command = next(line for line in events.splitlines() if line.startswith("transfer-command="))
         self.assertIn("umask 077", transfer_command)
         self.assertIn("--no-same-owner --no-same-permissions", transfer_command)
@@ -292,13 +294,13 @@ sys.exit(81)
                          self.home / ".local/share/cloud-vm/config/_bun.nix",
                           self.home / ".local/share/cloud-vm/config/package.json",
                           self.home / ".local/share/cloud-vm/config/bun.lock",
-                          self.home / ".local/share/cloud-vm/config/stacked-jj-prs.md",
+                          self.home / ".local/share/cloud-vm/config/skills/stacked-jj-prs/SKILL.md",
                           self.home / ".local/share/cloud-vm/config/skills/exe-dev/SKILL.md"):
             self.assertEqual(managed.stat().st_mode & 0o022, 0)
             self.assertEqual(managed.stat().st_mode & 0o777, 0o600)
         for relative in ("flake.nix", "flake.lock", "config/target.nix", "config/home.nix",
                          "config/powerlevel10k_config.zsh", "config/_bun.nix",
-                         "config/package.json", "config/bun.lock", "config/stacked-jj-prs.md",
+                         "config/package.json", "config/bun.lock", "config/skills/stacked-jj-prs/SKILL.md",
                          "config/skills/exe-dev/SKILL.md"):
             self.assertEqual((self.home / ".local/share/cloud-vm" / relative).read_bytes(), (ROOT / relative).read_bytes())
         self.assertEqual(hashlib.sha256(lock_path.read_bytes()).hexdigest(), lock_before)
