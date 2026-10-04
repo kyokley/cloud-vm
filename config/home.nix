@@ -2,6 +2,7 @@
   inputs,
   pkgs,
   target,
+  config,
   ...
 }: let
   defaultContext = ''
@@ -157,6 +158,9 @@ in {
         defaultContext
         (builtins.readFile "${inputs.caveman}/plugins/caveman/skills/caveman/SKILL.md")
       ];
+      skills = {
+        exe-dev = ./skills/exe-dev/SKILL.md;
+      };
       settings = {
         autoupdate = false;
         model = "opencode/big-pickle";
@@ -169,6 +173,7 @@ in {
           external_directory = {
             "/nix/store/**" = "allow";
             "/tmp/**" = "allow";
+            "${config.home.homeDirectory}/.config/**" = "allow";
           };
         };
       };
@@ -188,6 +193,5 @@ in {
   xdg.configFile = {
     "opencode/opencode.json".force = true;
     "opencode/AGENTS.md".force = true;
-    "opencode/skills/exe-dev/SKILL.md".source = ./skills/exe-dev/SKILL.md;
   };
 }
