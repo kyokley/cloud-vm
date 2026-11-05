@@ -87,6 +87,7 @@
         name = "cloud-vm";
         runtimeInputs = with pkgs; [
           openssh
+          kitty
           python3
           bash
           coreutils
@@ -132,6 +133,7 @@
           jq
           fzf
           openssh
+          kitty
         ];
         text = ''
           if [[ $# -eq 0 ]]; then
@@ -140,7 +142,7 @@
             vm="$*"
           fi
           if [[ -n "$vm" ]]; then
-            TERM=xterm-256color ssh -o StrictHostKeyChecking=accept-new "$vm"
+            kitten ssh -o StrictHostKeyChecking=accept-new "$vm"
           fi
         '';
       };

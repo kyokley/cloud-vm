@@ -45,7 +45,7 @@ Keep Home Manager modules under `config/home/`, not `modules/`: the latter is re
 
 ## Requirements and limits
 
-Local tools: Nix with flakes enabled, Bash, Python 3, `tar`, and `ssh`. The development shell provides Bash, Python 3, ShellCheck, and `nixfmt`.
+Local tools: Nix with flakes enabled, Bash, Python 3, `tar`, OpenSSH, and Kitty (`kitten`). The TUI's interactive SSH action and `ssh-vm` use `kitten ssh`; `ssh` remains required for exe.dev control-plane and automation commands. Nix-packaged commands include Kitty and OpenSSH at runtime. The development shell provides Bash, Python 3, ShellCheck, and `nixfmt`.
 
 The guest must be an existing Linux VM with a non-root user selected by the exe.dev SSH gateway. Supported architectures are `x86_64-linux` and `aarch64-linux`. The gateway identity, username, home directory, and architecture must match `config/target.nix`; `apply` stops on mismatch and never creates or switches accounts. Root targets are not supported.
 

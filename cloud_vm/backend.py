@@ -211,4 +211,4 @@ class FleetBackend:
         destination = self._ssh_destinations.get(name, f"vm+{name}@vm.exe.xyz")
         if destination not in (f"{name}.exe.xyz", f"vm+{name}@vm.exe.xyz"):
             raise BackendError(f"Unsafe SSH destination recorded for VM {name}")
-        return ["ssh", destination]
+        return ["kitten", "ssh", destination]

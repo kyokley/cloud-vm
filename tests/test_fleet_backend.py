@@ -49,7 +49,9 @@ class FleetBackendTests(unittest.TestCase):
             ],
         )
         self.assertEqual(run.call_args.args[0], ["ssh", "exe.dev", "ls", "--json"])
-        self.assertEqual(self.backend.ssh_args("dev-1"), ["ssh", "dev-1.exe.xyz"])
+        self.assertEqual(
+            self.backend.ssh_args("dev-1"), ["kitten", "ssh", "dev-1.exe.xyz"]
+        )
 
     @mock.patch("cloud_vm.backend.subprocess.run")
     def test_malformed_inventory_fails_closed(self, run):
@@ -180,8 +182,14 @@ class FleetBackendTests(unittest.TestCase):
             "",
         )
         self.backend.list_vms()
-        self.assertEqual(self.backend.ssh_args("dev-1"), ["ssh", "vm+dev-1@vm.exe.xyz"])
-        self.assertEqual(self.backend.ssh_args("other"), ["ssh", "vm+other@vm.exe.xyz"])
+        self.assertEqual(
+            self.backend.ssh_args("dev-1"),
+            ["kitten", "ssh", "vm+dev-1@vm.exe.xyz"],
+        )
+        self.assertEqual(
+            self.backend.ssh_args("other"),
+            ["kitten", "ssh", "vm+other@vm.exe.xyz"],
+        )
 
     @mock.patch("cloud_vm.backend.subprocess.run")
     def test_unsafe_ssh_dest_fails_closed(self, run):

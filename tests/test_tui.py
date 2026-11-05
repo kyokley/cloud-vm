@@ -45,7 +45,7 @@ class FakeBackend:
         return "removed"
 
     def ssh_args(self, name):
-        return ["ssh", name]
+        return ["kitten", "ssh", name]
 
 
 class TuiTests(unittest.TestCase):
@@ -190,19 +190,35 @@ class TuiTests(unittest.TestCase):
         self.assertEqual([vm.name for vm in app.vms], ["alpha", "beta"])
         self.assertIn("Fleet refreshed", app.message)
 
-    def test_missing_ssh_executable_is_reported_without_crashing(self):
+    def test_interactive_ssh_invokes_kitty_kitten_with_vm_name(self):
+        backend = FakeBackend()
+        app = self.app(backend)
+        app.vms = backend.vms
+        screen = tui.FakeScreen(14, 60)
+        screen.keys = [ord("s"), ord("q")]
+        with (
+            patch.object(tui.curses, "curs_set"),
+            patch.object(tui.curses, "endwin"),
+            patch.object(app, "refresh"),
+            patch.object(tui.subprocess, "run") as run,
+        ):
+            app.run(screen)
+        run.assert_called_once_with(["kitten", "ssh", "alpha"], check=False)
+        self.assertEqual(app.message, "SSH session ended.")
+
+    def test_missing_kitty_kitten_is_reported_without_crashing(self):
         backend = FakeBackend()
         backend.ssh_args = lambda name: (_ for _ in ()).throw(
-            FileNotFoundError("ssh not found")
+            FileNotFoundError("kitten not found")
         )
         app = self.app(backend)
         app.vms = backend.vms
         screen = tui.FakeScreen(14, 60)
         screen.keys = [ord("s"), ord("q")]
-        with patch.object(tui.curses, "curs_set"):
+        with (patch.object(tui.curses, "curs_set"), patch.object(app, "refresh")):
             app.run(screen)
         self.assertTrue(app.error)
-        self.assertEqual(app.message, "ssh not found")
+        self.assertEqual(app.message, "kitten not found")
 
     def test_worker_result_and_failure_are_reported(self):
         backend = FakeBackend()
