@@ -2,7 +2,7 @@
 
 ## Supported boundary
 
-This project will configure an existing exe.dev VM account using standalone Home Manager and a locked Nix flake. It will not replace the guest operating system, kernel, network, or exe.dev SSH management. It is not a NixOS deployment template. System-wide services and account creation are outside the initial scope.
+This project manages exe.dev VM inventory and lifecycle through a terminal UI, and configures VM accounts using standalone Home Manager and a locked Nix flake. It does not replace the guest operating system, kernel, network, or exe.dev SSH management. It is not a NixOS deployment template. Guest account creation and general system-service management are outside scope; explicitly authorized Nix installation and login-shell changes are supported.
 
 The official exe.dev documentation describes VMs created from container images with persistent disks and a constrained kernel choice. It does not establish the default SSH username, architecture, sudo permissions, or availability of systemd. The template must require explicit account, home directory, and architecture configuration rather than assuming those values.
 
@@ -15,6 +15,10 @@ The official exe.dev documentation describes VMs created from container images w
 5. Transfer the project and activate its Home Manager configuration through the exe.dev SSH gateway.
 6. Edit declarative configuration and repeat activation. Do not automatically recreate VMs or rerun installation.
 
+The Python standard-library curses UI delegates to a subprocess backend. It uses a single worker for blocking inventory, inspection, and mutation operations; interactive SSH temporarily yields the terminal. Confirmations bind to an operation and VM snapshot. Backend mutation methods independently require explicit authorization, and noninteractive CLI commands require their documented consent flags. Creation does not implicitly install Nix or apply Home Manager. No mutation is automatically retried, including after timeout: the outcome may be unknown.
+
+Deletion preserves `scripts/rm-vm.sh` cleanup behavior. It deactivates Mattermost accounts matching the guest hostname prefix, not an inferred exe.dev VM-name prefix. Cleanup failure prevents VM deletion, but partial cleanup is possible. A confirmation must disclose both effects.
+
 ## Configuration model
 
 - A root `flake.nix` pins compatible nixpkgs and Home Manager inputs through `flake.lock`.
@@ -22,6 +26,8 @@ The official exe.dev documentation describes VMs created from container images w
 - Home Manager manages user packages and a small set of non-destructive user settings. It must not silently back up or overwrite conflicting files.
 - A development shell supplies lint and test tooling. The supported VM systems are `x86_64-linux` and `aarch64-linux`; development tooling should also work on macOS where practical.
 - Flake evaluation remains pure. Do not derive target identity from the workstation environment or use `--impure`.
+
+Feature files are flake-parts modules, recursively composed using the dendritic pattern. The base Home Manager module remains `config/home.nix`. Fleet declarations add per-VM identity metadata and Home Manager modules. Named configurations inherit the base; Home Manager assertions prevent their effective account identity from diverging from metadata checked before deployment. `lib.target` and `homeConfigurations.vm` retain base compatibility; `lib.fleet.targets` and named `homeConfigurations` expose fleet entries. VM-name matching selects a named entry when present and otherwise deliberately selects the base. Explicit unknown configuration keys must fail rather than fall back.
 
 ## Helper boundaries
 
@@ -55,9 +61,11 @@ Require usable systemd. Determinate supports SELinux; do not require `getenforce
 
 ### Deployment and locked activation
 
-Reserve `$HOME/.local/share/cloud-vm` on the verified guest account. Reject unsafe ownership, symlinks, and group/other-writable modes at the destination and relevant parent paths before copying. Do not chmod existing home or parent paths. Create missing reserved directories with restrictive permissions, and extract allowlisted files without group/other permissions regardless of source modes or umask. Transfer an explicit allowlist: `flake.nix`, `flake.lock`, and configuration files under `config/`; include additional local inputs only by deliberate allowlist changes. Never copy `.git`, deepwork files, unrelated working-tree files, or secrets. Do not delete outside the reserved directory. Transfer failure prevents activation. Apply never invokes bootstrap as a fallback.
+Reserve `$HOME/.local/share/cloud-vm` on the verified guest account. Reject unsafe ownership, symlinks, and group/other-writable modes at the destination and relevant parent paths before copying. Do not chmod existing home or parent paths. Create missing reserved directories with restrictive permissions, and extract allowlisted files without group/other permissions regardless of source modes or umask. Transfer the explicit `guest_files` allowlist from `scripts/vm.sh` plus regular Nix files under `modules/` and `config/vms/`. Include additional local inputs only by deliberate manifest changes. Never copy `.git`, deepwork files, unrelated working-tree files, or secrets. Do not delete outside the reserved directory. Transfer into `.incoming`, publish as a replacement `source` snapshot only on transfer success, and build that snapshot with the selected configuration key. Keep `.activation` outside the replaceable snapshot. A stale stage requires manual review. Transfer failure prevents activation. Apply never invokes bootstrap as a fallback. Concurrent independent deployments to the same VM are not supported.
 
 Deployment requires a present, current lock and all local inputs. It uses an explicit `path:` flake reference and the explicit Home Manager activation output, with `nix-command flakes` enabled on each Nix command. Use `--no-update-lock-file` and `--no-write-lock-file` so deployment fails rather than resolving stale inputs or changing the lock. Build failure prevents activation. Activation failure propagates to the caller and may leave partial user changes; atomic rollback is outside this initial scope.
+
+The local working tree must remain unchanged throughout apply. Target metadata is evaluated before transfer reads local files; concurrent configuration edits or lock updates can invalidate the checked source. An immutable local snapshot and cross-process remote locking are future hardening, not current guarantees.
 
 ### Required focused evidence
 
@@ -71,6 +79,8 @@ Local mock tests establish command construction and failure behavior, not guest 
 
 ## Sources and accepted facts
 
+- [exe.dev API](https://exe.dev/docs/api.md): SSH is the control-plane API; inventory is an object containing `vms`, whose entries include `vm_name`, `status`, `ssh_dest`, and `ssh_host`. `new --json` is documented, but its success schema is not assumed. Registration and billing failures must be reported rather than treated as an empty fleet.
+- [flake-parts](https://flake.parts/): top-level flake modules compose configuration and per-system outputs. Recursive feature imports implement the dendritic pattern; Home Manager submodules remain in their own module class.
 - [exe.dev CLI new](https://hub.exe.dev/docs/cli-new): `ssh exe.dev new [options]`; supports name, image, CPU, memory, disk, environment, and setup script. Setup scripts are first-boot-only and limited to 10 KiB.
 - [exe.dev customization](https://hub.exe.dev/docs/customization): custom container images and `exe.dev/login-user` image label.
 - [exe.dev SSH destination FAQ](https://hub.exe.dev/docs/faq/ssh-destination): hostname routing and `ssh vm+my-vm@vm.exe.xyz` fallback.

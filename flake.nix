@@ -22,129 +22,38 @@
     };
   };
 
-  outputs = inputs: let
-    target = import ./config/target.nix;
-    homeFor = {pkgs, ...}:
-      inputs.home-manager.lib.homeManagerConfiguration {
-        inherit pkgs;
-        modules = [./config/home.nix];
-        extraSpecialArgs = {inherit target inputs;};
-      };
-  in
-    inputs.flake-parts.lib.mkFlake {inherit inputs;} {
+  outputs =
+    inputs:
+    let
+      discover =
+        dir:
+        let
+          entries = builtins.readDir dir;
+          names = builtins.attrNames entries;
+          walk =
+            name:
+            let
+              path = dir + "/${name}";
+              kind = entries.${name};
+            in
+            if kind == "directory" then
+              discover path
+            else if kind == "regular" && builtins.match ".*\\.nix" name != null then
+              [ path ]
+            else
+              [ ];
+        in
+        builtins.concatLists (map walk names);
+      discoverIfPresent = dir: if builtins.pathExists dir then discover dir else [ ];
+    in
+    inputs.flake-parts.lib.mkFlake { inherit inputs; } {
+      imports = discover (./. + "/modules") ++ discoverIfPresent (./. + "/config/vms");
       systems = [
         "x86_64-linux"
         "aarch64-linux"
         "x86_64-darwin"
         "aarch64-darwin"
       ];
-
-      flake = {
-        lib.target = target;
-        homeConfigurations.vm = homeFor {
-          pkgs = import inputs.nixpkgs {system = target.system;};
-        };
-      };
-
-      perSystem = {
-        self',
-        pkgs,
-        system,
-        ...
-      }: {
-        packages = let
-          # vm-script = builtins.readFile ./scripts/vm.sh
-          vm-script = pkgs.stdenv.mkDerivation {
-            pname = "vm-script";
-            version = "0.0.1";
-            src = ./.;
-            dontUnpack = true;
-            installPhase = ''
-              # mkdir -p $out/bin
-              # cp -r $src/config $out/config
-              # cp -r $src/scripts $out/scripts
-              mkdir $out
-              cp -r $src/* $out/
-              chmod -R +x $out/scripts
-            '';
-          };
-          ls-vm = pkgs.writeShellApplication {
-            name = "ls-vm";
-            text = ''
-              ssh exe.dev ls
-            '';
-          };
-          new-vm = pkgs.writeShellApplication {
-            name = "new-vm";
-            text = ''
-              domain=$(ssh exe.dev new | grep ssh | awk '{print $NF}')
-              new_vm_name=$(echo "$domain" | awk -F. '{print $1}')
-              echo "wait 5 secs for $new_vm_name to come up"
-              sleep 5
-              echo "begin bootstrapping nix"
-              ${vm-script}/scripts/vm.sh bootstrap "$new_vm_name" --yes --allow-sudo
-              ${vm-script}/scripts/vm.sh apply "$new_vm_name"
-
-              echo
-              echo "new machine created: $new_vm_name domain: $domain"
-            '';
-          };
-          rm-vm = pkgs.writeShellApplication {
-            name = "rm-vm";
-            runtimeInputs = with pkgs; [
-              jq
-              fzf
-              openssh
-            ];
-            text = builtins.readFile ./scripts/rm-vm.sh;
-          };
-          ssh-vm = pkgs.writeShellApplication {
-            name = "ssh-vm";
-            runtimeInputs = with pkgs; [
-              jq
-              fzf
-            ];
-            text = ''
-              if [[ $# -eq 0 ]]; then
-                vm=$(ssh exe.dev ls --json | ${pkgs.jq}/bin/jq '.vms[].ssh_host' | sed 's/"//g' | ${pkgs.fzf}/bin/fzf)
-              else
-                vm="$*"
-              fi
-
-              if [[ -n "$vm" ]]; then
-                TERM=xterm-256color ssh -o StrictHostKeyChecking=accept-new "$vm"
-              fi
-            '';
-          };
-        in {
-          inherit new-vm vm-script rm-vm ssh-vm ls-vm;
-        } //
-          inputs.nixpkgs.lib.optionalAttrs
-          (builtins.elem system [
-            "x86_64-linux"
-            "aarch64-linux"
-          ])
-          {
-            inherit (homeFor {inherit pkgs;}) activationPackage;
-          };
-
-        devShells.default = pkgs.mkShell {
-          packages = with pkgs; [
-            bash
-            bun
-            inputs.bun2nix.packages.${pkgs.stdenv.hostPlatform.system}.default
-            python3
-            shellcheck
-            nixfmt
-            self'.packages.new-vm
-            self'.packages.vm-script
-            self'.packages.rm-vm
-            self'.packages.ssh-vm
-            self'.packages.ls-vm
-          ];
-        };
-
-        formatter = pkgs.nixfmt;
-      };
+      fleet.projectRoot = ./.;
     };
 }

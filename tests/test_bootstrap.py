@@ -1,6 +1,7 @@
 import json
 import os
 import pathlib
+import shutil
 import shlex
 import subprocess
 import tempfile
@@ -18,16 +19,25 @@ class BootstrapTests(unittest.TestCase):
         self.home.mkdir()
         self.bin = self.root / "bin"
         self.bin.mkdir()
+        (self.bin / "bash").symlink_to(shutil.which("bash"))
+        (self.bin / "python3").symlink_to(shutil.which("python3"))
         source = SCRIPT.read_text()
         source = source.replace("nix_root=/nix", f"nix_root={self.root}/nix")
-        source = source.replace("systemd_dir=/run/systemd/system", f"systemd_dir={self.root}/systemd")
+        source = source.replace(
+            "systemd_dir=/run/systemd/system", f"systemd_dir={self.root}/systemd"
+        )
         self.script = self.root / "bootstrap-nix.sh"
         self.script.write_text(source)
         self.script.chmod(0o755)
         self.env = os.environ.copy()
+        tool_dirs = {
+            str(pathlib.Path(shutil.which(name)).parent)
+            for name in ("mkdir", "chmod", "rm", "mktemp", "stat", "grep")
+            if shutil.which(name)
+        }
         self.env.update(
             HOME=str(self.home),
-            PATH=f"{self.bin}:/usr/bin:/bin",
+            PATH=":".join([str(self.bin), *sorted(tool_dirs), "/usr/bin", "/bin"]),
             NIX_TRACE=str(self.root / "nix-trace"),
             SUDO_TRACE=str(self.root / "sudo-trace"),
             CURL_TRACE=str(self.root / "curl-trace"),
@@ -43,7 +53,7 @@ class BootstrapTests(unittest.TestCase):
         return path
 
     def bash_mock(self, name, body):
-        return self.mock(name, "#!/bin/bash\n" + body + "\n")
+        return self.mock(name, f"#!{shutil.which('bash')}\n" + body + "\n")
 
     def set_linux(self, arch="x86_64", uid=1000):
         self.bash_mock("uname", f'[[ "$1" == -m ]] && echo {arch} || echo Linux')
@@ -51,10 +61,12 @@ class BootstrapTests(unittest.TestCase):
 
     def set_systemd(self, state="running"):
         (self.root / "systemd").mkdir(exist_ok=True)
-        self.bash_mock("systemctl", f'echo {state}')
+        self.bash_mock("systemctl", f"echo {state}")
 
     def set_sudo(self, installer_status=0, preflight_status=0):
-        self.mock("sudo", f'''#!/usr/bin/env python3
+        self.mock(
+            "sudo",
+            f"""#!/usr/bin/env python3
 import json,os,subprocess,sys
 args=sys.argv[1:]
 with open(os.environ["SUDO_TRACE"],"a") as f: f.write(json.dumps(args)+"\\n")
@@ -63,17 +75,21 @@ if args[:2] != ["-n","--"]: sys.exit(88)
 if {installer_status} != 0: sys.exit({installer_status})
 result=subprocess.run(args[2:],stdin=sys.stdin.buffer)
 sys.exit(result.returncode)
-''')
+""",
+        )
 
     def set_curl(self, fail=False):
-        self.mock("curl", f'''#!/usr/bin/env python3
+        self.mock(
+            "curl",
+            f"""#!/usr/bin/env python3
 import json,os,pathlib,sys
 args=sys.argv[1:]
 with open(os.environ["CURL_TRACE"],"a") as f: f.write(json.dumps(args)+"\\n")
 if {fail}: sys.exit(22)
 output=pathlib.Path(args[args.index("--output")+1])
 output.write_bytes(pathlib.Path(os.environ["ENTRY_SCRIPT"]).read_bytes())
-''')
+""",
+        )
 
     def legacy_nix_installer(self, *, ping_failure=False, record_env=True):
         lines = [
@@ -81,28 +97,40 @@ output.write_bytes(pathlib.Path(os.environ["ENTRY_SCRIPT"]).read_bytes())
             'printf "%s\\n" "$@" > "$INSTALLER_ARGS"',
         ]
         if record_env:
-            lines.append('printf "%s\\n%s\\n" "${NIX_BECOME-UNSET}" "${NIX_INSTALLER_YES-UNSET}" > "$INSTALLER_ENV"')
-        lines.extend([
-            'if IFS= read -r line; then exit 12; fi',
-            'mkdir -p "$HOME/.nix-profile/bin"',
-            "printf '#!/bin/sh\\nprintf \\\"%%s\\\\n\\\" \\\"\\$*\\\" >> \\\"\\$NIX_TRACE\\\"\\ncase \\\"\\$*\\\" in *store\\\\ ping*) ",
-            "exit 29;",
-            ";; esac\\nexit 0\\n' > \"$HOME/.nix-profile/bin/nix\"",
-            'chmod +x "$HOME/.nix-profile/bin/nix"',
-        ])
+            lines.append(
+                'printf "%s\\n%s\\n" "${NIX_BECOME-UNSET}" "${NIX_INSTALLER_YES-UNSET}" > "$INSTALLER_ENV"'
+            )
+        lines.extend(
+            [
+                "if IFS= read -r line; then exit 12; fi",
+                'mkdir -p "$HOME/.nix-profile/bin"',
+                'printf \'#!/bin/sh\\nprintf \\"%%s\\\\n\\" \\"\\$*\\" >> \\"\\$NIX_TRACE\\"\\ncase \\"\\$*\\" in *store\\\\ ping*) ',
+                "exit 29;",
+                ';; esac\\nexit 0\\n\' > "$HOME/.nix-profile/bin/nix"',
+                'chmod +x "$HOME/.nix-profile/bin/nix"',
+            ]
+        )
         if ping_failure:
-            lines[-2] = "printf '#!/bin/sh\\nexit 29\\n' > \"$HOME/.nix-profile/bin/nix\""
+            lines[-2] = (
+                "printf '#!/bin/sh\\nexit 29\\n' > \"$HOME/.nix-profile/bin/nix\""
+            )
         else:
-            lines[-3] = "printf '#!/bin/sh\\nprintf \\\"%%s\\\\n\\\" \\\"\\$*\\\" >> \\\"\\$NIX_TRACE\\\"\\ncase \\\"\\$*\\\" in *store\\\\ ping*) exit 29 ;; esac\\nexit 0\\n' > \"$HOME/.nix-profile/bin/nix\""
+            lines[-3] = (
+                'printf \'#!/bin/sh\\nprintf \\"%%s\\\\n\\" \\"\\$*\\" >> \\"\\$NIX_TRACE\\"\\ncase \\"\\$*\\" in *store\\\\ ping*) exit 29 ;; esac\\nexit 0\\n\' > "$HOME/.nix-profile/bin/nix"'
+            )
         return "\n".join(lines) + "\n"
 
     def nix_installer(self, ping_failure=False):
-        ping_case = 'case "$*" in *"store ping"*) exit 29 ;; esac\n' if ping_failure else ""
-        fake_nix = '#!/bin/sh\nprintf "%s\\n" "$*" >> "$NIX_TRACE"\n' + ping_case + "exit 0\n"
+        ping_case = (
+            'case "$*" in *"store ping"*) exit 29 ;; esac\n' if ping_failure else ""
+        )
+        fake_nix = (
+            '#!/bin/sh\nprintf "%s\\n" "$*" >> "$NIX_TRACE"\n' + ping_case + "exit 0\n"
+        )
         return (
-            'if IFS= read -r line; then exit 12; fi\n'
+            "if IFS= read -r line; then exit 12; fi\n"
             'mkdir -p "$HOME/.nix-profile/bin"\n'
-            f"printf %s {shlex.quote(fake_nix)} > \"$HOME/.nix-profile/bin/nix\"\n"
+            f'printf %s {shlex.quote(fake_nix)} > "$HOME/.nix-profile/bin/nix"\n'
             'chmod +x "$HOME/.nix-profile/bin/nix"\n'
         )
 
@@ -112,7 +140,9 @@ output.write_bytes(pathlib.Path(os.environ["ENTRY_SCRIPT"]).read_bytes())
         return path
 
     def run_script(self, *args):
-        return subprocess.run([str(self.script), *args], env=self.env, text=True, capture_output=True)
+        return subprocess.run(
+            [str(self.script), *args], env=self.env, text=True, capture_output=True
+        )
 
     def test_help_consent_and_legacy_modes(self):
         result = self.run_script("--help")
@@ -131,7 +161,7 @@ output.write_bytes(pathlib.Path(os.environ["ENTRY_SCRIPT"]).read_bytes())
         self.assertIn("unsupported Linux architecture", self.run_script("--yes").stderr)
 
         self.set_linux()
-        self.bash_mock("systemctl", 'echo running')
+        self.bash_mock("systemctl", "echo running")
         marker = self.root / "ran"
         installer = self.installer_file(f"/usr/bin/touch '{marker}'\n")
         self.set_curl(fail=True)
@@ -152,7 +182,9 @@ output.write_bytes(pathlib.Path(os.environ["ENTRY_SCRIPT"]).read_bytes())
         self.assertFalse((self.root / "curl-trace").exists())
 
         self.set_sudo(preflight_status=1)
-        result = self.run_script("--yes", "--allow-sudo", "--installer-file", str(installer))
+        result = self.run_script(
+            "--yes", "--allow-sudo", "--installer-file", str(installer)
+        )
         self.assertIn("sudo is unavailable", result.stderr)
         self.assertFalse(marker.exists())
 
@@ -173,7 +205,10 @@ output.write_bytes(pathlib.Path(os.environ["ENTRY_SCRIPT"]).read_bytes())
         result = self.run_script("--yes", "--installer-file", str(installer))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(sudo_trace.exists())
-        self.assertEqual(args_file.read_text().splitlines(), ["install", "--no-confirm", "--diagnostic-endpoint="])
+        self.assertEqual(
+            args_file.read_text().splitlines(),
+            ["install", "--no-confirm", "--diagnostic-endpoint="],
+        )
         self.assertEqual(env_file.read_text().splitlines(), ["UNSET", "UNSET"])
         self.assertIn("Nix installation verified", result.stdout)
 
@@ -190,18 +225,42 @@ output.write_bytes(pathlib.Path(os.environ["ENTRY_SCRIPT"]).read_bytes())
         )
         self.env["NIX_BECOME"] = "/hostile/inherited/sudo"
         self.env["NIX_INSTALLER_YES"] = "hostile"
-        result = self.run_script("--yes", "--allow-sudo", "--installer-file", str(installer))
+        result = self.run_script(
+            "--yes", "--allow-sudo", "--installer-file", str(installer)
+        )
         self.assertEqual(result.returncode, 0, result.stderr)
-        calls = [json.loads(line) for line in (self.root / "sudo-trace").read_text().splitlines()]
+        calls = [
+            json.loads(line)
+            for line in (self.root / "sudo-trace").read_text().splitlines()
+        ]
         self.assertEqual(calls[0], ["-n", "true"])
-        self.assertEqual(calls[1], ["-n", "--", "sh", str(installer), "install", "--no-confirm", "--diagnostic-endpoint="])
-        self.assertEqual(args_file.read_text().splitlines(), ["install", "--no-confirm", "--diagnostic-endpoint="])
+        self.assertEqual(
+            calls[1],
+            [
+                "-n",
+                "--",
+                "sh",
+                str(installer),
+                "install",
+                "--no-confirm",
+                "--diagnostic-endpoint=",
+            ],
+        )
+        self.assertEqual(
+            args_file.read_text().splitlines(),
+            ["install", "--no-confirm", "--diagnostic-endpoint="],
+        )
         self.assertEqual(env_file.read_text().splitlines(), ["UNSET", "UNSET"])
-        self.assertIn("--experimental-features nix-command store ping --store daemon", (self.root / "nix-trace").read_text())
+        self.assertIn(
+            "--experimental-features nix-command store ping --store daemon",
+            (self.root / "nix-trace").read_text(),
+        )
 
         self.set_sudo(installer_status=19)
         args_file.unlink()
-        result = self.run_script("--yes", "--allow-sudo", "--installer-file", str(installer))
+        result = self.run_script(
+            "--yes", "--allow-sudo", "--installer-file", str(installer)
+        )
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn("installation verified", result.stdout)
 
@@ -211,14 +270,23 @@ output.write_bytes(pathlib.Path(os.environ["ENTRY_SCRIPT"]).read_bytes())
         self.set_sudo()
         self.set_curl(fail=True)
         installer_args = self.root / "args"
-        installer = self.installer_file(f'printf "%s\\n" "$@" > "{installer_args}"\n' + self.nix_installer())
-        result = self.run_script("--yes", "--allow-sudo", "--installer-file", str(installer))
+        installer = self.installer_file(
+            f'printf "%s\\n" "$@" > "{installer_args}"\n' + self.nix_installer()
+        )
+        result = self.run_script(
+            "--yes", "--allow-sudo", "--installer-file", str(installer)
+        )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse((self.root / "curl-trace").exists())
-        self.assertEqual(installer_args.read_text().splitlines(), ["install", "--no-confirm", "--diagnostic-endpoint="])
+        self.assertEqual(
+            installer_args.read_text().splitlines(),
+            ["install", "--no-confirm", "--diagnostic-endpoint="],
+        )
 
         (self.home / ".nix-profile/bin/nix").unlink()
-        result = self.run_script("--yes", "--allow-sudo", "--installer-file", str(self.root / "missing"))
+        result = self.run_script(
+            "--yes", "--allow-sudo", "--installer-file", str(self.root / "missing")
+        )
         self.assertIn("readable, non-empty regular file", result.stderr)
         self.assertFalse((self.root / "curl-trace").exists())
 
@@ -248,7 +316,9 @@ output.write_bytes(pathlib.Path(os.environ["ENTRY_SCRIPT"]).read_bytes())
         self.set_curl(fail=True)
         nix_root = self.root / "nix"
         nix_root.mkdir()
-        result = self.run_script("--yes", "--allow-sudo", "--installer-file", str(installer))
+        result = self.run_script(
+            "--yes", "--allow-sudo", "--installer-file", str(installer)
+        )
         self.assertIn("existing /nix state", result.stderr)
         self.assertFalse((self.root / "curl-trace").exists())
         self.assertFalse((self.root / "ran").exists())
@@ -257,12 +327,16 @@ output.write_bytes(pathlib.Path(os.environ["ENTRY_SCRIPT"]).read_bytes())
         profile = self.home / ".nix-profile/bin/nix"
         profile.parent.mkdir(parents=True)
         profile.write_text("#!/bin/sh\nexit 0\n")
-        result = self.run_script("--yes", "--allow-sudo", "--installer-file", str(installer))
+        result = self.run_script(
+            "--yes", "--allow-sudo", "--installer-file", str(installer)
+        )
         self.assertIn("existing Nix installation marker", result.stderr)
 
         profile.unlink()
-        self.bash_mock("nix", 'exit 0')
-        result = self.run_script("--yes", "--allow-sudo", "--installer-file", str(installer))
+        self.bash_mock("nix", "exit 0")
+        result = self.run_script(
+            "--yes", "--allow-sudo", "--installer-file", str(installer)
+        )
         self.assertIn("Nix command already exists", result.stderr)
 
     def test_successful_installer_without_daemon_store_or_failing_installer_fails(self):
@@ -270,13 +344,17 @@ output.write_bytes(pathlib.Path(os.environ["ENTRY_SCRIPT"]).read_bytes())
         self.set_systemd()
         self.set_sudo()
         installer = self.installer_file(self.nix_installer(ping_failure=True))
-        result = self.run_script("--yes", "--allow-sudo", "--installer-file", str(installer))
+        result = self.run_script(
+            "--yes", "--allow-sudo", "--installer-file", str(installer)
+        )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("daemon store verification failed", result.stderr)
         self.assertNotIn("installation verified", result.stdout)
 
         installer.write_text("exit 23\n")
-        result = self.run_script("--yes", "--allow-sudo", "--installer-file", str(installer))
+        result = self.run_script(
+            "--yes", "--allow-sudo", "--installer-file", str(installer)
+        )
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn("installation verified", result.stdout)
 

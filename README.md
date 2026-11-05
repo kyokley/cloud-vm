@@ -1,12 +1,36 @@
-# exe.dev Linux VM Home Manager template
+# exe.dev VM fleet manager
 
-This project configures user packages and settings on an existing exe.dev Linux VM with standalone Home Manager. It does not install NixOS or manage the VM's operating system, SSH, or system services. It does not create accounts or VMs automatically.
+Manage an exe.dev VM fleet from a terminal UI, then configure each VM with Nix and standalone Home Manager. Shared settings live in `config/home.nix`; per-VM Nix modules extend or override that base through flake-parts and the dendritic pattern.
+
+This project does not install NixOS, replace the guest operating system, or create guest accounts. VM creation, privileged Nix bootstrap, Home Manager activation, and deletion remain separate, explicitly authorized operations.
+
+## Fleet TUI
+
+From this repository:
+
+```sh
+python3 -m cloud_vm --project-root "$PWD"
+# Or use the Nix-packaged command:
+nix run path:.#cloud-vm -- --project-root "$PWD"
+```
+
+Authenticate your SSH key with exe.dev first. The TUI uses the documented SSH control-plane interface, including `ssh exe.dev ls --json`. Normal SSH host-key verification remains enabled. First connections may require accepting verified host keys outside the TUI.
+
+The interface lists VM state and supports guest inspection, creation, SSH, bootstrap, apply, and deletion. Inventory state comes from exe.dev; a running VM is not proof that Nix or Home Manager is installed. Inspect and provision deliberately. Creating a VM does not automatically execute an installer.
+
+Keys: arrows or `j`/`k` select; `r` refreshes; `i` inspects; `n` creates; `s` opens SSH; `b` bootstraps Nix; `a` applies Home Manager; `d` deletes; `[`/`]` scroll output; `?` shows help; `q` quits. Press Escape to cancel a confirmation. Deletion requires typing the exact VM name. Resize if the terminal cannot show the complete warning.
+
+Creation can incur charges. Bootstrap runs a mutable installer with root privileges. Apply can change user files and the login shell through sudo. Deletion first deactivates matching Mattermost users and then permanently removes the VM. Read each confirmation. Failed or timed-out operations may already have changed remote state; inspect before retrying.
+
+For automation, `python3 -m cloud_vm --help` lists one-shot commands. Mutations require `--yes`; bootstrap also requires `--allow-sudo`. For example, `python3 -m cloud_vm create my-vm --yes` creates only the VM. The packaged `new-vm` command delegates to that create-only flow and requires a name and `--yes`.
 
 ## Files
 
 - `flake.nix`, `flake.lock`: pinned nixpkgs/Home Manager configuration and development tools.
 - `config/target.nix`: explicit Linux system, guest username, and absolute home directory. Example values are placeholders.
 - `config/home.nix`: user packages and Home Manager settings.
+- `config/vms/*.nix`, `modules/`: per-VM feature modules and shared flake-parts features.
+- `cloud_vm/`: terminal interface, consent-gated backend, and CLI entry point.
 - `scripts/vm.sh`: inspect, bootstrap, and apply commands.
 - `scripts/rm-vm.sh`: deactivate VM-matched Mattermost users and remove VMs.
 - `scripts/bootstrap-nix.sh`: guest-side Nix installer checks and execution.
@@ -77,15 +101,52 @@ On the guest, the equivalent local interface is `bootstrap-nix.sh --yes [--allow
 
 Edit `config/target.nix` with the verified, non-root guest identity before deployment. Edit `config/home.nix` to change user settings or packages; the template includes `git`, `curl`, `jq`, `ripgrep`, and `tmux`.
 
+### Shared base and per-VM overrides
+
+`flake.nix` recursively imports flake-parts feature modules under `modules/` and `config/vms/`. Each imported file belongs to the flake module system: this is the dendritic pattern. The fleet feature composes standalone Home Manager configurations from the shared `config/home.nix` plus each VM's Home Manager modules.
+
+For a VM named `my-vm`, add `config/vms/my-vm.nix`:
+
+```nix
+{
+  fleet.vms.my-vm = {
+    # Omit target fields that should inherit config/target.nix.
+    # Set these only after inspecting the guest.
+    target = {
+      system = "x86_64-linux";
+      username = "exedev";
+      homeDirectory = "/home/exedev";
+    };
+    modules = [
+      ({ lib, pkgs, ... }: {
+        home.packages = [ pkgs.htop ];
+        home.sessionVariables.FLEET_ROLE = "worker";
+        programs.tmux.enable = lib.mkForce false;
+      })
+    ];
+  };
+}
+```
+
+Use separate feature files for other VMs. Home Manager merges package lists and module definitions normally; use `lib.mkForce` when intentionally replacing a base value. Identity assertions prevent Home Manager overrides from changing the account independently of validated target metadata. VM names must use the same lowercase naming rules as the management helpers; `vm` is reserved for the base configuration.
+
+`homeConfigurations.vm` and `lib.target` expose the base. Named entries appear in `homeConfigurations.<name>` and `lib.fleet.targets.<name>`. Applying to a registered VM selects its matching configuration; other VM names deliberately use the base. The shared target must still match every guest that uses it. Configuration files are trusted executable Nix expressions, not secret storage.
+
 Apply to the existing VM:
 
 ```sh
-scripts/vm.sh apply my-vm
+scripts/vm.sh apply my-vm --yes
 ```
 
-Apply requires usable local and guest Nix installations. It checks guest identity before writes, reserves `$HOME/.local/share/cloud-vm`, and transfers only `flake.nix`, `flake.lock`, `config/target.nix`, `config/home.nix`, `config/powerlevel10k_config.zsh`, `config/_bun.nix`, `config/package.json`, `config/bun.lock`, and `config/skills/stacked-jj-prs/SKILL.md`. Do not store secrets in this project or Nix expressions; Nix store contents are not secret storage.
+Apply requires usable local and guest Nix installations. It checks guest identity before writes and reserves `$HOME/.local/share/cloud-vm`. The transfer contains the explicit `guest_files` allowlist in `scripts/vm.sh`, plus regular `.nix` files under `modules/` and `config/vms/`. Other configuration files are not copied automatically: declare additional inputs deliberately in the transfer manifest. Symlinked input paths are rejected. Do not store secrets in this project or Nix expressions; Nix store contents are not secret storage.
 
-The deployment directory and its relevant parents must be user-owned directories without symlinks or group/other write permission. Existing home and parent directories are never chmodded; fix unsafe modes yourself before retrying. The helper creates missing reserved directories with mode `0700` and extracts managed files without group/other permissions. Apply replaces its allowlisted project files inside that reserved directory. Home Manager refuses conflicting unmanaged home files rather than silently backing them up or overwriting them. Resolve those conflicts deliberately before retrying. The helper never deletes outside the reserved directory and never bootstraps Nix as an apply fallback. A build failure prevents activation. After successful activation, apply uses noninteractive `sudo -n` to register the stable Home Manager zsh path in `/etc/shells` when missing, then changes only the current user's login shell. Ensure sudo authorization is available when either change is needed; apply never prompts or installs fallback packages. If the shell step fails, Home Manager activation may already have changed user files and settings; rerun apply after resolving the reported issue. Reconnect for the new login shell to take effect. Activation and shell changes do not have automatic rollback.
+The deployment directory and its relevant parents must be user-owned directories without symlinks or group/other write permission. Existing home and parent directories are never chmodded; fix unsafe modes yourself before retrying. The helper creates missing reserved directories with mode `0700` and extracts managed files without group/other permissions. It transfers into `.incoming`, then replaces the managed `source` snapshot only after transfer succeeds; removed feature files cannot linger in the active source. The `.activation` output link stays outside that source snapshot. An interrupted transfer can leave `.incoming`; inspect that exact reserved directory before manually removing a stale stage and retrying. Do not run concurrent deployments to the same VM.
+
+Home Manager refuses conflicting unmanaged home files rather than silently backing them up or overwriting them. Resolve those conflicts deliberately before retrying. The helper never deletes outside the reserved directory and never bootstraps Nix as an apply fallback. A build failure prevents activation. After successful activation, apply uses noninteractive `sudo -n` to register the stable Home Manager zsh path in `/etc/shells` when missing, then changes only the current user's login shell. Ensure sudo authorization is available when either change is needed; apply never prompts or installs fallback packages. If the shell step fails, Home Manager activation may already have changed user files and settings; rerun apply after resolving the reported issue. Reconnect for the new login shell to take effect. Activation and shell changes do not have automatic rollback.
+
+Select a configuration explicitly with `scripts/vm.sh apply my-vm --yes --target my-vm`; unknown explicit keys fail before guest writes. `--target vm` selects the shared base.
+
+Keep the local project unchanged while apply runs. Metadata evaluation and file transfer read the working tree at different times; concurrent edits can invalidate the checked configuration. Wait for apply to finish before editing configuration or updating the lock file.
 
 Keep `home.stateVersion = "26.05"` in `config/home.nix` after initial deployment. It selects Home Manager compatibility defaults; changing it does not migrate existing state.
 
@@ -117,8 +178,8 @@ nix develop path:.#default
 shellcheck scripts/*.sh
 for script in scripts/*.sh; do bash -n "$script"; done
 python3 -m unittest discover -s tests
-nixfmt --check flake.nix config/*.nix
-nix flake check --no-build path:.
+nixfmt --check flake.nix config/*.nix modules/fleet/*.nix modules/packages/*.nix
+nix flake check --no-build --no-update-lock-file --no-write-lock-file path:.
 ```
 
 The flake check evaluates outputs supported by the current host. Linux activation builds and real activation should be tested on a supported Linux host or VM. Local Darwin evaluation does not verify Linux builds, guest compatibility, or restart persistence.
