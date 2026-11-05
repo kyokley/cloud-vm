@@ -51,7 +51,7 @@
       baseActivation = inputs.home-manager.lib.homeManagerConfiguration {
         inherit pkgs;
         modules = [
-          (projectRoot + "/config/home.nix")
+          (projectRoot + "/config/home/default.nix")
           ({ config, ... }: {
             assertions = [
               {

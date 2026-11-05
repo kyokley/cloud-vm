@@ -69,8 +69,8 @@ class VmTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("inspect NAME", result.stdout)
         self.assertIn("bootstrap NAME --yes --allow-sudo", result.stdout)
-        self.assertIn("config/powerlevel10k_config.zsh", result.stdout)
-        self.assertIn("config/skills/exe-dev/SKILL.md", result.stdout)
+        self.assertIn("config/home/shell/powerlevel10k_config.zsh", result.stdout)
+        self.assertIn("config/home/opencode/skills/exe-dev/SKILL.md", result.stdout)
         self.assertIn("modules/**/*.nix", result.stdout)
         self.assertIn("config/vms/**/*.nix", result.stdout)
         self.assertIn("~/.local/share/cloud-vm/.incoming", result.stdout)
@@ -182,7 +182,10 @@ cat >/dev/null
         (repo / "config").mkdir()
         (repo / "flake.nix").write_text("{}\n")
         (repo / "config/target.nix").write_text("{}\n")
-        (repo / "config/home.nix").write_text("{}\n")
+        (repo / "config/home/default.nix").parent.mkdir(parents=True)
+        (repo / "config/home/default.nix").write_text("{}\n")
+        (repo / "config/home/shell/default.nix").parent.mkdir(parents=True)
+        (repo / "config/home/shell/default.nix").write_text("{}\n")
         script = repo / "scripts/vm.sh"
         script.write_text(SCRIPT.read_text())
         script.chmod(0o755)
@@ -204,11 +207,14 @@ cat >/dev/null
             capture_output=True,
         )
         self.assertIn(
-            "required local input missing or unsafe: config/powerlevel10k_config.zsh",
+            "required local input missing or unsafe: config/home/shell/powerlevel10k_config.zsh",
             result.stderr,
         )
 
-        (repo / "config/powerlevel10k_config.zsh").symlink_to(
+        (repo / "config/home/shell/powerlevel10k_config.zsh").parent.mkdir(
+            parents=True, exist_ok=True
+        )
+        (repo / "config/home/shell/powerlevel10k_config.zsh").symlink_to(
             pathlib.Path(self.temp.name) / "outside-config"
         )
         result = subprocess.run(
@@ -218,23 +224,25 @@ cat >/dev/null
             capture_output=True,
         )
         self.assertIn(
-            "required local input missing or unsafe: config/powerlevel10k_config.zsh",
+            "required local input missing or unsafe: config/home/shell/powerlevel10k_config.zsh",
             result.stderr,
         )
 
         for name in (
             "flake.lock",
             "config/target.nix",
-            "config/home.nix",
-            "config/_bun.nix",
-            "config/package.json",
-            "config/skills/stacked-jj-prs/SKILL.md",
+            "config/home/default.nix",
+            "config/home/shell/default.nix",
+            "config/home/opencode/default.nix",
+            "config/home/opencode/_bun.nix",
+            "config/home/opencode/package.json",
+            "config/home/opencode/skills/stacked-jj-prs/SKILL.md",
         ):
             path = repo / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("{}\n")
-        (repo / "config/powerlevel10k_config.zsh").unlink()
-        (repo / "config/powerlevel10k_config.zsh").write_text("{}\n")
+        (repo / "config/home/shell/powerlevel10k_config.zsh").unlink()
+        (repo / "config/home/shell/powerlevel10k_config.zsh").write_text("{}\n")
         result = subprocess.run(
             [str(script), "apply", "node", "--yes"],
             env=self.env,
@@ -242,10 +250,10 @@ cat >/dev/null
             capture_output=True,
         )
         self.assertIn(
-            "required local input missing or unsafe: config/bun.lock", result.stderr
+            "required local input missing or unsafe: config/home/opencode/bun.lock", result.stderr
         )
         self.assertFalse(self.trace.exists())
-        (repo / "config/bun.lock").symlink_to(
+        (repo / "config/home/opencode/bun.lock").symlink_to(
             pathlib.Path(self.temp.name) / "outside-lock"
         )
         result = subprocess.run(
@@ -255,7 +263,7 @@ cat >/dev/null
             capture_output=True,
         )
         self.assertIn(
-            "required local input missing or unsafe: config/bun.lock", result.stderr
+            "required local input missing or unsafe: config/home/opencode/bun.lock", result.stderr
         )
         self.assertFalse(self.trace.exists())
 
@@ -414,7 +422,7 @@ sys.exit(81)
         )
         self.assertEqual(
             members_line,
-            "members=config/_bun.nix,config/bun.lock,config/home.nix,config/package.json,config/powerlevel10k_config.zsh,config/skills/exe-dev/SKILL.md,config/skills/mattermost-monitor/SKILL.md,config/skills/mattermost-monitor/scripts/mark_replied.sh,config/skills/mattermost-monitor/scripts/mattermost.env.example,config/skills/mattermost-monitor/scripts/monitor.sh,config/skills/mattermost-monitor/scripts/post_reply.sh,config/skills/mattermost-monitor/scripts/wait_for_events.sh,config/skills/mattermost-proxy-pat/SKILL.md,config/skills/stacked-jj-prs/SKILL.md,config/target.nix,flake.lock,flake.nix,modules/fleet/default.nix,modules/packages/default.nix",
+            "members=config/home/default.nix,config/home/opencode/_bun.nix,config/home/opencode/bun.lock,config/home/opencode/default.nix,config/home/opencode/package.json,config/home/opencode/skills/exe-dev/SKILL.md,config/home/opencode/skills/mattermost-monitor/SKILL.md,config/home/opencode/skills/mattermost-monitor/scripts/mark_replied.sh,config/home/opencode/skills/mattermost-monitor/scripts/mattermost.env.example,config/home/opencode/skills/mattermost-monitor/scripts/monitor.sh,config/home/opencode/skills/mattermost-monitor/scripts/post_reply.sh,config/home/opencode/skills/mattermost-monitor/scripts/wait_for_events.sh,config/home/opencode/skills/mattermost-proxy-pat/SKILL.md,config/home/opencode/skills/stacked-jj-prs/SKILL.md,config/home/shell/default.nix,config/home/shell/powerlevel10k_config.zsh,config/target.nix,flake.lock,flake.nix,modules/fleet/default.nix,modules/packages/default.nix",
         )
         transfer_command = next(
             line for line in events.splitlines() if line.startswith("transfer-command=")
@@ -454,34 +462,36 @@ sys.exit(81)
             self.home / ".local/share/cloud-vm",
             self.home / ".local/share/cloud-vm/source",
             self.home / ".local/share/cloud-vm/source/config",
-            self.home / ".local/share/cloud-vm/source/config/skills",
-            self.home / ".local/share/cloud-vm/source/config/skills/exe-dev",
+            self.home / ".local/share/cloud-vm/source/config/home/opencode/skills",
+            self.home / ".local/share/cloud-vm/source/config/home/opencode/skills/exe-dev",
         ):
             self.assertEqual(directory.stat().st_mode & 0o777, 0o700)
         for managed in (
             self.home / ".local/share/cloud-vm/source/flake.nix",
             self.home / ".local/share/cloud-vm/source/flake.lock",
             self.home / ".local/share/cloud-vm/source/config/target.nix",
-            self.home / ".local/share/cloud-vm/source/config/home.nix",
-            self.home / ".local/share/cloud-vm/source/config/powerlevel10k_config.zsh",
-            self.home / ".local/share/cloud-vm/source/config/_bun.nix",
-            self.home / ".local/share/cloud-vm/source/config/package.json",
-            self.home / ".local/share/cloud-vm/source/config/bun.lock",
+            self.home / ".local/share/cloud-vm/source/config/home/default.nix",
+            self.home / ".local/share/cloud-vm/source/config/home/shell/default.nix",
+            self.home / ".local/share/cloud-vm/source/config/home/shell/powerlevel10k_config.zsh",
+            self.home / ".local/share/cloud-vm/source/config/home/opencode/default.nix",
+            self.home / ".local/share/cloud-vm/source/config/home/opencode/_bun.nix",
+            self.home / ".local/share/cloud-vm/source/config/home/opencode/package.json",
+            self.home / ".local/share/cloud-vm/source/config/home/opencode/bun.lock",
             self.home
-            / ".local/share/cloud-vm/source/config/skills/stacked-jj-prs/SKILL.md",
-            self.home / ".local/share/cloud-vm/source/config/skills/exe-dev/SKILL.md",
+            / ".local/share/cloud-vm/source/config/home/opencode/skills/stacked-jj-prs/SKILL.md",
+            self.home / ".local/share/cloud-vm/source/config/home/opencode/skills/exe-dev/SKILL.md",
             self.home
-            / ".local/share/cloud-vm/source/config/skills/mattermost-monitor/SKILL.md",
+            / ".local/share/cloud-vm/source/config/home/opencode/skills/mattermost-monitor/SKILL.md",
             self.home
-            / ".local/share/cloud-vm/source/config/skills/mattermost-monitor/scripts/mark_replied.sh",
+            / ".local/share/cloud-vm/source/config/home/opencode/skills/mattermost-monitor/scripts/mark_replied.sh",
             self.home
-            / ".local/share/cloud-vm/source/config/skills/mattermost-monitor/scripts/mattermost.env.example",
+            / ".local/share/cloud-vm/source/config/home/opencode/skills/mattermost-monitor/scripts/mattermost.env.example",
             self.home
-            / ".local/share/cloud-vm/source/config/skills/mattermost-monitor/scripts/monitor.sh",
+            / ".local/share/cloud-vm/source/config/home/opencode/skills/mattermost-monitor/scripts/monitor.sh",
             self.home
-            / ".local/share/cloud-vm/source/config/skills/mattermost-monitor/scripts/post_reply.sh",
+            / ".local/share/cloud-vm/source/config/home/opencode/skills/mattermost-monitor/scripts/post_reply.sh",
             self.home
-            / ".local/share/cloud-vm/source/config/skills/mattermost-monitor/scripts/wait_for_events.sh",
+            / ".local/share/cloud-vm/source/config/home/opencode/skills/mattermost-monitor/scripts/wait_for_events.sh",
         ):
             self.assertEqual(managed.stat().st_mode & 0o022, 0)
             self.assertEqual(managed.stat().st_mode & 0o777, 0o600)
@@ -489,19 +499,21 @@ sys.exit(81)
             "flake.nix",
             "flake.lock",
             "config/target.nix",
-            "config/home.nix",
-            "config/powerlevel10k_config.zsh",
-            "config/_bun.nix",
-            "config/package.json",
-            "config/bun.lock",
-            "config/skills/stacked-jj-prs/SKILL.md",
-            "config/skills/exe-dev/SKILL.md",
-            "config/skills/mattermost-monitor/SKILL.md",
-            "config/skills/mattermost-monitor/scripts/mark_replied.sh",
-            "config/skills/mattermost-monitor/scripts/mattermost.env.example",
-            "config/skills/mattermost-monitor/scripts/monitor.sh",
-            "config/skills/mattermost-monitor/scripts/post_reply.sh",
-            "config/skills/mattermost-monitor/scripts/wait_for_events.sh",
+            "config/home/default.nix",
+            "config/home/shell/default.nix",
+            "config/home/shell/powerlevel10k_config.zsh",
+            "config/home/opencode/default.nix",
+            "config/home/opencode/_bun.nix",
+            "config/home/opencode/package.json",
+            "config/home/opencode/bun.lock",
+            "config/home/opencode/skills/stacked-jj-prs/SKILL.md",
+            "config/home/opencode/skills/exe-dev/SKILL.md",
+            "config/home/opencode/skills/mattermost-monitor/SKILL.md",
+            "config/home/opencode/skills/mattermost-monitor/scripts/mark_replied.sh",
+            "config/home/opencode/skills/mattermost-monitor/scripts/mattermost.env.example",
+            "config/home/opencode/skills/mattermost-monitor/scripts/monitor.sh",
+            "config/home/opencode/skills/mattermost-monitor/scripts/post_reply.sh",
+            "config/home/opencode/skills/mattermost-monitor/scripts/wait_for_events.sh",
         ):
             self.assertEqual(
                 (self.home / ".local/share/cloud-vm/source" / relative).read_bytes(),
@@ -541,8 +553,8 @@ sys.exit(81)
                     paths = {
                         "destination": destination,
                         "config": destination / "source/config",
-                        "skills": destination / "source/config/skills",
-                        "skill": destination / "source/config/skills/exe-dev",
+                        "skills": destination / "source/config/home/opencode/skills",
+                        "skill": destination / "source/config/home/opencode/skills/exe-dev",
                     }
                     affected = paths[name]
                     affected.mkdir(parents=True, mode=0o700, exist_ok=True)
@@ -662,7 +674,7 @@ sys.exit(81)
         self.home = pathlib.Path(self.temp.name) / "unsafe-config-file-home"
         self.home.mkdir()
         self.deployment_mocks()
-        config_dir = self.home / ".local/share/cloud-vm/source/config"
+        config_dir = self.home / ".local/share/cloud-vm/source/config/home/shell"
         config_dir.mkdir(parents=True)
         outside = pathlib.Path(self.temp.name) / "outside-config"
         outside.write_text("unsafe\n")
@@ -676,7 +688,7 @@ sys.exit(81)
         self.home = pathlib.Path(self.temp.name) / "unsafe-bun-lock-home"
         self.home.mkdir()
         self.deployment_mocks()
-        config_dir = self.home / ".local/share/cloud-vm/source/config"
+        config_dir = self.home / ".local/share/cloud-vm/source/config/home/opencode"
         config_dir.mkdir(parents=True)
         (config_dir / "bun.lock").symlink_to(outside)
         result = self.run_script("apply", "node")

@@ -1,6 +1,6 @@
 # exe.dev VM fleet manager
 
-Manage an exe.dev VM fleet from a terminal UI, then configure each VM with Nix and standalone Home Manager. Shared settings live in `config/home.nix`; per-VM Nix modules extend or override that base through flake-parts and the dendritic pattern.
+Manage an exe.dev VM fleet from a terminal UI, then configure each VM with Nix and standalone Home Manager. Shared settings live in `config/home/`; per-VM Nix modules extend or override that base through flake-parts and the dendritic pattern.
 
 This project does not install NixOS, replace the guest operating system, or create guest accounts. VM creation, privileged Nix bootstrap, Home Manager activation, and deletion remain separate, explicitly authorized operations.
 
@@ -28,14 +28,20 @@ For automation, `python3 -m cloud_vm --help` lists one-shot commands. Mutations 
 
 - `flake.nix`, `flake.lock`: pinned nixpkgs/Home Manager configuration and development tools.
 - `config/target.nix`: explicit Linux system, guest username, and absolute home directory. Example values are placeholders.
-- `config/home.nix`: user packages and Home Manager settings.
-- `config/vms/*.nix`, `modules/`: per-VM feature modules and shared flake-parts features.
+- `config/home/default.nix`: shared account settings, user packages, and imports for the Home Manager modules below.
+- `config/home/shell/`: shell settings and the Powerlevel10k prompt configuration.
+- `config/home/opencode/`: OpenCode settings, skills, and its Bun dependency manifests. Run dependency maintenance commands from this directory.
+- `config/vms/*.nix`: per-VM flake-parts declarations and overrides.
+- `modules/`: shared flake-parts features for fleet composition and command packaging.
 - `cloud_vm/`: terminal interface, consent-gated backend, and CLI entry point.
 - `scripts/vm.sh`: inspect, bootstrap, and apply commands.
 - `scripts/rm-vm.sh`: deactivate VM-matched Mattermost users and remove VMs.
 - `scripts/bootstrap-nix.sh`: guest-side Nix installer checks and execution.
 - `tests/`: mocked helper tests.
+- `services/mattermost/`: independent Mattermost Compose deployment, with its own documentation and scripts. Run its commands from that directory; it is not part of the VM configuration transfer.
 - `docs/design.md`: scope and safety contracts.
+
+Keep Home Manager modules under `config/home/`, not `modules/`: the latter is recursively imported into the separate flake-parts module system. Python and shell entry points remain at their existing paths.
 
 ## Requirements and limits
 
@@ -99,11 +105,11 @@ On the guest, the equivalent local interface is `bootstrap-nix.sh --yes [--allow
 
 ## Configure and apply
 
-Edit `config/target.nix` with the verified, non-root guest identity before deployment. Edit `config/home.nix` to change user settings or packages; the template includes `git`, `curl`, `jq`, `ripgrep`, and `tmux`.
+Edit `config/target.nix` with the verified, non-root guest identity before deployment. Edit `config/home/default.nix` to change shared user settings or packages; the template includes `git`, `curl`, `jq`, `ripgrep`, and `tmux`. Shell and OpenCode settings live in their respective subdirectories.
 
 ### Shared base and per-VM overrides
 
-`flake.nix` recursively imports flake-parts feature modules under `modules/` and `config/vms/`. Each imported file belongs to the flake module system: this is the dendritic pattern. The fleet feature composes standalone Home Manager configurations from the shared `config/home.nix` plus each VM's Home Manager modules.
+`flake.nix` recursively imports flake-parts feature modules under `modules/` and `config/vms/`. Each imported file belongs to the flake module system: this is the dendritic pattern. The fleet feature composes standalone Home Manager configurations from the shared `config/home/default.nix` plus each VM's Home Manager modules.
 
 For a VM named `my-vm`, add `config/vms/my-vm.nix`:
 
@@ -148,7 +154,7 @@ Select a configuration explicitly with `scripts/vm.sh apply my-vm --yes --target
 
 Keep the local project unchanged while apply runs. Metadata evaluation and file transfer read the working tree at different times; concurrent edits can invalidate the checked configuration. Wait for apply to finish before editing configuration or updating the lock file.
 
-Keep `home.stateVersion = "26.05"` in `config/home.nix` after initial deployment. It selects Home Manager compatibility defaults; changing it does not migrate existing state.
+Keep `home.stateVersion = "26.05"` in `config/home/default.nix` after initial deployment. It selects Home Manager compatibility defaults; changing it does not migrate existing state.
 
 ## Lock updates and evaluation
 
@@ -178,7 +184,7 @@ nix develop path:.#default
 shellcheck scripts/*.sh
 for script in scripts/*.sh; do bash -n "$script"; done
 python3 -m unittest discover -s tests
-nixfmt --check flake.nix config/*.nix modules/fleet/*.nix modules/packages/*.nix
+nixfmt --check flake.nix config/target.nix config/home/default.nix config/home/shell/default.nix config/home/opencode/default.nix modules/fleet/*.nix modules/packages/*.nix
 nix flake check --no-build --no-update-lock-file --no-write-lock-file path:.
 ```
 

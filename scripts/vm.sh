@@ -6,20 +6,22 @@ readonly guest_files=(
   flake.nix
   flake.lock
   config/target.nix
-  config/home.nix
-  config/powerlevel10k_config.zsh
-  config/_bun.nix
-  config/bun.lock
-  config/package.json
-  config/skills/stacked-jj-prs/SKILL.md
-  config/skills/exe-dev/SKILL.md
-  config/skills/mattermost-proxy-pat/SKILL.md
-  config/skills/mattermost-monitor/SKILL.md
-  config/skills/mattermost-monitor/scripts/mark_replied.sh
-  config/skills/mattermost-monitor/scripts/mattermost.env.example
-  config/skills/mattermost-monitor/scripts/monitor.sh
-  config/skills/mattermost-monitor/scripts/post_reply.sh
-  config/skills/mattermost-monitor/scripts/wait_for_events.sh
+  config/home/default.nix
+  config/home/shell/default.nix
+  config/home/shell/powerlevel10k_config.zsh
+  config/home/opencode/default.nix
+  config/home/opencode/_bun.nix
+  config/home/opencode/bun.lock
+  config/home/opencode/package.json
+  config/home/opencode/skills/stacked-jj-prs/SKILL.md
+  config/home/opencode/skills/exe-dev/SKILL.md
+  config/home/opencode/skills/mattermost-proxy-pat/SKILL.md
+  config/home/opencode/skills/mattermost-monitor/SKILL.md
+  config/home/opencode/skills/mattermost-monitor/scripts/mark_replied.sh
+  config/home/opencode/skills/mattermost-monitor/scripts/mattermost.env.example
+  config/home/opencode/skills/mattermost-monitor/scripts/monitor.sh
+  config/home/opencode/skills/mattermost-monitor/scripts/post_reply.sh
+  config/home/opencode/skills/mattermost-monitor/scripts/wait_for_events.sh
 )
 
 usage() {
@@ -40,12 +42,15 @@ at the reserved project root.
 
 Transfer includes flake.nix, flake.lock, the explicit guest_files allowlist
 below, and only .nix files matching modules/**/*.nix and config/vms/**/*.nix. The explicit
-allowlist includes config/target.nix, config/home.nix,
-config/powerlevel10k_config.zsh, config/_bun.nix, config/bun.lock,
-config/package.json, config/skills/stacked-jj-prs/SKILL.md,
-config/skills/exe-dev/SKILL.md, config/skills/mattermost-proxy-pat/SKILL.md,
-config/skills/mattermost-monitor/SKILL.md, and
-config/skills/mattermost-monitor/scripts/{mark_replied.sh,
+allowlist includes config/target.nix, config/home/default.nix,
+config/home/shell/default.nix, config/home/shell/powerlevel10k_config.zsh,
+config/home/opencode/default.nix, config/home/opencode/_bun.nix,
+config/home/opencode/bun.lock, config/home/opencode/package.json,
+config/home/opencode/skills/stacked-jj-prs/SKILL.md,
+config/home/opencode/skills/exe-dev/SKILL.md,
+config/home/opencode/skills/mattermost-proxy-pat/SKILL.md,
+config/home/opencode/skills/mattermost-monitor/SKILL.md, and
+config/home/opencode/skills/mattermost-monitor/scripts/{mark_replied.sh,
 mattermost.env.example,monitor.sh,post_reply.sh,wait_for_events.sh}.
 No other config files are transferred. Add local inputs only by deliberate
 allowlist changes here. Apply needs local nix, tar, ssh, and Python 3.

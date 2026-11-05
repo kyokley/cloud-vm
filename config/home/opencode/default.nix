@@ -1,0 +1,134 @@
+{
+  inputs,
+  pkgs,
+  config,
+  ...
+}:
+let
+  defaultContext = ''
+    You are running in an exe.dev VM.
+
+    https://exe.dev/docs/proxy.md has details about the exe.dev HTTPS proxy.
+
+    Only use documented exe.dev features (see https://exe.dev/docs.md). Undocumented local endpoints are internal infrastructure—unstable and unsupported.
+  '';
+
+  oh_my_opencode_slim = {
+    autoUpdate = false;
+    preset = "opencode-fast";
+    presets = {
+      opencode-fast = {
+        orchestrator = {
+          model = "opencode/mimo-v2.6-flash-free";
+        };
+        oracle = {
+          model = "opencode/nemotron-3-ultra-free";
+        };
+        librarian = {
+          model = "opencode/mimo-v2.6-flash-free";
+        };
+        explorer = {
+          model = "opencode/ling-3.1-flash-free";
+        };
+        designer = {
+          model = "opencode/muse-spark-1.3-contributor-free";
+        };
+        fixer = {
+          model = "opencode/nemotron-3.5-lightning-free";
+        };
+        council = {
+          model = "opencode/mimo-v2.6-flash-free";
+        };
+      };
+      opencode-free = {
+        orchestrator = {
+          model = "opencode/big-pickle";
+        };
+        oracle = {
+          model = "opencode/big-pickle";
+          variant = "max";
+        };
+        librarian = {
+          model = "opencode/big-pickle";
+        };
+        explorer = {
+          model = "opencode/big-pickle";
+        };
+        designer = {
+          model = "opencode/big-pickle";
+        };
+        fixer = {
+          model = "opencode/big-pickle";
+          variant = "high";
+        };
+        council = {
+          model = "opencode/big-pickle";
+        };
+      };
+    };
+  };
+  bun2nix-lib = inputs.bun2nix.packages.${pkgs.stdenv.hostPlatform.system}.default;
+  npm_deps = bun2nix-lib.mkDerivation {
+    packageJson = ./package.json;
+    src = ./.;
+
+    bunDeps = bun2nix-lib.fetchBunDeps {
+      bunNix = ./_bun.nix;
+    };
+
+    module = "package.json";
+    dontUseBunBuild = true;
+    dontRunLifecycleScripts = true;
+    installPhase = ''
+      runHook preInstall
+      cp -R node_modules "$out"
+      runHook postInstall
+    '';
+  };
+in
+{
+  home.file = {
+    ".config/opencode/oh-my-opencode-slim.json" = {
+      text = builtins.toJSON oh_my_opencode_slim;
+    };
+  };
+
+  programs.opencode = {
+    enable = true;
+    context = builtins.concatStringsSep "\n" [
+      defaultContext
+      (builtins.readFile "${inputs.caveman}/plugins/caveman/skills/caveman/SKILL.md")
+    ];
+    skills = {
+      exe-dev = ./skills/exe-dev/SKILL.md;
+      mattermost-proxy-pat = ./skills/mattermost-proxy-pat/SKILL.md;
+      mattermost-monitor = ./skills/mattermost-monitor;
+      stacked-jj-prs = ./skills/stacked-jj-prs/SKILL.md;
+    };
+    settings = {
+      autoupdate = false;
+      model = "opencode/big-pickle";
+      small_model = "opencode/big-pickle";
+      plugin = [
+        "${npm_deps}/oh-my-opencode-slim/dist/index.js"
+        "opencode-skill-creator"
+      ];
+      permission = {
+        external_directory = {
+          "/nix/store/**" = "allow";
+          "/tmp/**" = "allow";
+          "${config.home.homeDirectory}/**" = "allow";
+        };
+      };
+    };
+  };
+
+  xdg.configFile = {
+    "opencode/opencode.json".force = true;
+    "opencode/AGENTS.md".force = true;
+    "opencode/skills/mattermost-monitor/scripts" = {
+      source = ./skills/mattermost-monitor/scripts;
+      recursive = true;
+    };
+  };
+}

@@ -74,6 +74,16 @@ class FleetFlakeTests(unittest.TestCase):
         )
         self.assertEqual(result.stdout.strip(), "{}")
 
+    def test_split_home_modules_preserve_shell_and_opencode_configuration(self):
+        self.assertEqual(
+            self.evaluate("homeConfigurations.vm.config.programs.zsh.prezto.prompt.theme"),
+            "powerlevel10k",
+        )
+        self.assertEqual(
+            self.evaluate("homeConfigurations.vm.config.programs.opencode.settings.model"),
+            "opencode/big-pickle",
+        )
+
     def test_per_vm_metadata_and_home_module_are_isolated(self):
         (self.root / "config" / "vms" / "alice.nix").write_text(
             "{ ... }: { fleet.vms.alice = { "
