@@ -22,7 +22,7 @@ Keys: arrows or `j`/`k` select; `r` refreshes; `i` inspects; `n` creates; `s` op
 
 Creation can incur charges. Bootstrap runs a mutable installer with root privileges. Apply can change user files and the login shell through sudo. Deletion first deactivates matching Mattermost users and then permanently removes the VM. Read each confirmation. Failed or timed-out operations may already have changed remote state; inspect before retrying.
 
-For automation, `python3 -m cloud_vm --help` lists one-shot commands. Mutations require `--yes`; bootstrap also requires `--allow-sudo`. For example, `python3 -m cloud_vm create my-vm --yes` creates only the VM. The packaged `new-vm` command delegates to that create-only flow and requires a name and `--yes`.
+For automation, `python3 -m cloud_vm --help` lists one-shot commands. Mutations require `--yes`; bootstrap also requires `--allow-sudo`. Use `python3 -m cloud_vm create --yes` to let exe.dev choose the VM name, or `python3 -m cloud_vm create my-vm --yes` to set it explicitly. In the TUI, leave the name blank to use exe.dev's default. The packaged `new-vm` command delegates to that create-only flow; its name argument is optional and `--yes` is required.
 
 ## Files
 

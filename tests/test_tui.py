@@ -18,8 +18,10 @@ class FakeBackend:
     def __init__(self):
         self.vms = [FakeVM("alpha"), FakeVM("beta", "stopped")]
         self.calls = []
+        self.list_calls = 0
 
     def list_vms(self):
+        self.list_calls += 1
         return self.vms
 
     def inspect(self, name):
@@ -122,6 +124,61 @@ class TuiTests(unittest.TestCase):
         app._poll()
         self.assertEqual(backend.calls, [("create", "gamma", True)])
         self.assertEqual([vm.name for vm in app.vms], ["alpha", "beta"])
+
+    def test_blank_create_input_selects_exedev_default_name(self):
+        app = self.app(FakeBackend())
+        screen = tui.FakeScreen(20, 80)
+        screen.keys = ["\n"]
+        app._create_from_input(screen)
+        self.assertEqual(app.pending_confirmation, ("create", None))
+        self.assertIn("blank: exe.dev chooses", " ".join(screen.rows))
+
+    def test_escape_or_resize_create_input_is_not_unnamed_create(self):
+        for key in ("\x1b", tui.curses.KEY_RESIZE):
+            app = self.app(FakeBackend())
+            screen = tui.FakeScreen(20, 80)
+            screen.keys = [key]
+            app._create_from_input(screen)
+            self.assertIsNone(app.pending_confirmation)
+
+    def test_default_name_confirmation_warns_and_cancel_never_creates(self):
+        backend = FakeBackend()
+        app = self.app(backend)
+        app.pending_confirmation = ("create", None)
+        screen = tui.FakeScreen(20, 80)
+        screen.keys = ["n", "\n"]
+        app._confirm(screen)
+        visible = " ".join(" ".join(screen.rows).split())
+        self.assertIn("exe.dev-assigned name", visible)
+        self.assertIn("paid resources", visible)
+        self.assertEqual(backend.calls, [])
+
+    def test_authorized_default_create_refreshes_without_guessing_name(self):
+        backend = FakeBackend()
+        app = self.app(backend)
+        app.pending_confirmation = ("create", None)
+        app.confirm_mutation(True)
+        for _ in range(100):
+            app._poll()
+            if not app.busy:
+                break
+            threading.Event().wait(0.01)
+        self.assertEqual(backend.calls, [("create", None, True)])
+        self.assertEqual(backend.list_calls, 1)
+        self.assertEqual([vm.name for vm in app.vms], ["alpha", "beta"])
+
+    def test_named_create_behavior_remains_unchanged(self):
+        backend = FakeBackend()
+        app = self.app(backend)
+        app.pending_confirmation = ("create", "named-vm")
+        app.confirm_mutation(True)
+        for _ in range(100):
+            app._poll()
+            if not app.busy:
+                break
+            threading.Event().wait(0.01)
+        self.assertEqual(backend.calls, [("create", "named-vm", True)])
+        self.assertEqual(backend.list_calls, 1)
 
     def test_run_polls_refresh_during_idle_timeout(self):
         backend = FakeBackend()

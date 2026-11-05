@@ -110,6 +110,27 @@ class FleetBackendTests(unittest.TestCase):
         for invalid in ("Dev", "dev_1", "-dev", "dev;rm"):
             with self.subTest(name=invalid), self.assertRaises(BackendError):
                 self.backend.create(invalid, authorized=True)
+        run.reset_mock()
+        with self.assertRaises(BackendError):
+            self.backend.create("bad/name", authorized=True)
+        run.assert_not_called()
+
+    @mock.patch("cloud_vm.backend.subprocess.run")
+    def test_unnamed_create_uses_provider_default(self, run):
+        run.return_value = subprocess.CompletedProcess([], 0, "created", "")
+        self.assertEqual(self.backend.create(None, authorized=True), "created")
+        self.assertEqual(run.call_args.args[0], ["ssh", "exe.dev", "new", "--json"])
+        run.reset_mock()
+        self.assertEqual(self.backend.create("", authorized=True), "created")
+        self.assertEqual(run.call_args.args[0], ["ssh", "exe.dev", "new", "--json"])
+
+    @mock.patch("cloud_vm.backend.subprocess.run")
+    def test_unnamed_create_still_requires_authorization_first(self, run):
+        with self.assertRaises(BackendError):
+            self.backend.create(None)
+        with self.assertRaises(BackendError):
+            self.backend.create("")
+        run.assert_not_called()
 
     @mock.patch("cloud_vm.backend.subprocess.run")
     def test_remove_calls_existing_script_with_one_name(self, run):

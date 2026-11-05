@@ -140,7 +140,7 @@ class FleetApp:
                 True,
             )
             return
-        if not target:
+        if action != "create" and not target:
             self.message, self.error = "Enter a VM name before creating.", True
             return
         self.pending_operation = (action, target)
@@ -314,10 +314,19 @@ class FleetApp:
         action, target = self.pending_confirmation
         sentences = [f"You are about to {action} VM {target}.", self.WARNINGS[action]]
         if action == "create":
-            sentences[0] = f"You are about to create VM {target}."
-            sentences.append(
-                "Deployment uses configuration named after this VM when defined; otherwise it uses the shared base configuration."
-            )
+            if target is None:
+                sentences[0] = (
+                    "You are about to create a VM using an exe.dev-assigned name."
+                )
+                sentences.append(
+                    "After assignment, deployment uses configuration named after that VM "
+                    "when defined; otherwise it uses the shared base configuration."
+                )
+            else:
+                sentences[0] = f"You are about to create VM {target}."
+                sentences.append(
+                    "Deployment uses configuration named after this VM when defined; otherwise it uses the shared base configuration."
+                )
         elif action == "apply":
             sentences.append(
                 f"Deployment uses configuration named {target} when defined; otherwise it uses the shared base configuration."
@@ -362,9 +371,7 @@ class FleetApp:
                         ]
                     )
                 elif key == ord("n"):
-                    name = self._input(screen, "CREATE VM", "Enter new VM name: ")
-                    if name:
-                        self.request_mutation("create", name)
+                    self._create_from_input(screen)
                 elif key == ord("i") and self.vms:
                     name = self.vms[self.selected].name
                     self._submit(
@@ -427,7 +434,12 @@ class FleetApp:
         if value is None:
             self.message = "VM name entry cancelled."
             return None
-        return value.strip() or None
+        return value.strip()
+
+    def _create_from_input(self, screen):
+        name = self._input(screen, "CREATE VM", "VM name (blank: exe.dev chooses): ")
+        if name is not None:
+            self.request_mutation("create", name or None)
 
     @staticmethod
     def _read_line(screen, y, x, width):

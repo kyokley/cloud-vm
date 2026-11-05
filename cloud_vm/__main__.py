@@ -23,8 +23,8 @@ def _parser() -> argparse.ArgumentParser:
     )
     for command in ("inspect", "create", "bootstrap", "apply", "remove"):
         sub = commands.add_parser(command)
-        if command != "create":
-            sub.add_argument("name")
+        if command == "create":
+            sub.add_argument("name", nargs="?")
         else:
             sub.add_argument("name")
         if command in {"create", "bootstrap", "apply", "remove"}:

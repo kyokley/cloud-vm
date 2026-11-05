@@ -152,12 +152,22 @@ class FleetBackend:
         name = self._validate_name(name)
         return self._run([str(self.vm_script), "inspect", name], f"Inspect {name}")
 
-    def create(self, name: str, *, authorized: bool = False) -> str:
+    def create(self, name: str | None = None, *, authorized: bool = False) -> str:
         self._authorized(authorized, "VM creation")
-        name = self._validate_name(name)
+        if name is not None and not isinstance(name, str):
+            raise BackendError(
+                f"Invalid VM name {name!r}; expected a string or no name"
+            )
+        if name:
+            name = self._validate_name(name)
+        argv = ["ssh", "exe.dev", "new"]
+        if name:
+            argv.append(f"--name={name}")
+        argv.append("--json")
+        action = f"Create {name}" if name else "Create VM"
         output = self._run(
-            ["ssh", "exe.dev", "new", f"--name={name}", "--json"],
-            f"Create {name}",
+            argv,
+            action,
             mutation=True,
         )
         try:
@@ -168,7 +178,7 @@ class FleetBackend:
             detail = response["error"]
             if not isinstance(detail, str):
                 raise BackendError("exe.dev returned malformed creation error JSON")
-            raise BackendError(f"Create {name} failed: {detail.strip()}")
+            raise BackendError(f"{action} failed: {detail.strip()}")
         return output
 
     def bootstrap(self, name: str, *, authorized: bool = False) -> str:
