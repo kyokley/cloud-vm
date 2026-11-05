@@ -138,6 +138,8 @@ Use separate feature files for other VMs. Home Manager merges package lists and 
 
 `homeConfigurations.vm` and `lib.target` expose the base. Named entries appear in `homeConfigurations.<name>` and `lib.fleet.targets.<name>`. Applying to a registered VM selects its matching configuration; other VM names deliberately use the base. The shared target must still match every guest that uses it. Configuration files are trusted executable Nix expressions, not secret storage.
 
+`config/vms/rocker-frost.nix` defines a persistent rootless Podman Gerrit instance behind a Basic Auth proxy for that VM only. See [Gerrit setup](docs/gerrit.md) for required host configuration, runtime password provisioning, HTTPS routing, and recovery limits. No default credentials are provided.
+
 Apply to the existing VM:
 
 ```sh

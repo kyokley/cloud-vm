@@ -1,5 +1,6 @@
 """Focused flake-evaluation checks for fleet metadata and per-VM isolation."""
 
+import json
 import pathlib
 import shutil
 import subprocess
@@ -72,7 +73,16 @@ class FleetFlakeTests(unittest.TestCase):
             capture_output=True,
             text=True,
         )
-        self.assertEqual(result.stdout.strip(), "{}")
+        self.assertEqual(
+            json.loads(result.stdout),
+            {
+                "rocker-frost": {
+                    "system": "x86_64-linux",
+                    "username": "exedev",
+                    "homeDirectory": "/home/exedev",
+                }
+            },
+        )
 
     def test_split_home_modules_preserve_shell_and_opencode_configuration(self):
         self.assertEqual(
